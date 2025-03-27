@@ -141,600 +141,9 @@ public class NormaLegalService implements INormaLegalService {
     }
 
 
-    @Override
-    @Transactional
-    public ResultadoDTO guardarNormaLegal(NormaLegalRequest normaLegalRequest, String codigoUsuario) {
-        System.out.println("guardarNormaLegal - version NUEVA");
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
-        ResultadoDTO resultadoDTO = new ResultadoDTO();
-        Long idnormaLegalDelito = relacionNormaDelitoRepository.MaxId();
-        if (idnormaLegalDelito == null) {
-            idnormaLegalDelito = 1L;
-        }
-        MovNormaLegal normaLegal = normaLegalRepository.findById(normaLegalRequest.getDecretoId())
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_NORMA_NO_ENCONTRADA));
-        Usuario usuario = usuarioRepository.buscarUsuarioxCodigo(codigoUsuario);
-
-        switch (normaLegalRequest.getAccion()) {
-            case 3:
-                handleIncorporar(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
-                break;
-            case 6:
-                handleDerogarTotal(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
-                break;
-            case 4:
-                handleReubicar(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
-                break;
-            case 2:
-                handleModificar(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
-                break;
-            case 7:
-                handleDerogarParcial(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
-                break;
-            default:
-                throw new IllegalArgumentException("Acción no reconocida: " + normaLegalRequest.getAccion());
-        }
-
-        resultadoDTO.setResultado("Los Datos se guardaron correctamente");
-        return resultadoDTO;
-    }
-
-
-    //region Métodos de handleIncorporar
-
-    private void handleIncorporar(NormaLegalRequest normaLegalRequest, MovNormaLegal normaLegal, Usuario usuario, Long idnormaLegalDelito) {
-
-        Long MaxIdDelito = articuloRepository.MaxDelitos();
-        MovNormaLegalDelito normaLegalDelito = new MovNormaLegalDelito();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
-
-        MaeEstadoDelito estadoDelitoRegistrado = maeEstadoDelitoRepository.findById(Constant.REGISTRAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.INCORPORAR).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-
-        if (normaLegalRequest.getDelitoId() != null) {
-            actualizarDelitoExistenteIncorpora(normaLegalRequest, usuario, normaLegalDelito, estadoDelitoRegistrado, tipoMovimiento, formatter);
-        } else {
-            crearNuevoDelitoIncorpora(normaLegalRequest, usuario, MaxIdDelito, normaLegalDelito, estadoDelitoRegistrado, tipoMovimiento, formatter, idnormaLegalDelito, normaLegal);
-        }
-    }
-
-    private void actualizarDelitoExistenteIncorpora(NormaLegalRequest normaLegalRequest, Usuario usuario, MovNormaLegalDelito normaLegalDelito, MaeEstadoDelito estadoDelitoRegistrado, MaeTipoMovimiento tipoMovimiento, DateTimeFormatter formatter) {
-        MaeEstadoDelitosDet estadoDelitoEliminado = maeEstadoDelitoDetRepository.findById(Constant.ELIMINAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        MovDelito movDelito = articuloRepository.findById(normaLegalRequest.getDelitoId()).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-
-        List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
-        for (MovDelitosDet delitos : movDelitosDets) {
-            delitos.setEstadoDelitoDetalle(0);
-            delitos.setEstado(Constant.ESTADO_INACTIVO);
-            delitos.setVigente(Constant.ESTADO_INACTIVO);
-            delitos.setFecha(LocalDate.now());
-            delitos.setEstadoDelitosDet(estadoDelitoEliminado);
-            delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
-            movDelitosDetRepository.save(delitos);
-        }
-
-        List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
-        procesarDetallesDelitoIncorpora(movDelitoDTODet, normaLegalRequest, formatter, movDelito);
-
-        normaLegalDelito = normaLegalRepository.normaLegalDelito(normaLegalRequest.getDecretoId(), normaLegalRequest.getDelitoId());
-        normaLegalDelito.setFecha(LocalDate.now());
-        normaLegalDelito.setUsuario(usuario);
-        relacionNormaDelitoRepository.save(normaLegalDelito);
-    }
-
-    private void crearNuevoDelitoIncorpora(NormaLegalRequest normaLegalRequest, Usuario usuario, Long MaxIdDelito, MovNormaLegalDelito normaLegalDelito, MaeEstadoDelito estadoDelitoRegistrado, MaeTipoMovimiento tipoMovimiento, DateTimeFormatter formatter, Long idnormaLegalDelito, MovNormaLegal normaLegal) {
-        MovDelito movDelito = new MovDelito();
-        CfgFuenteEstructura cfgFuenteEstructura = cfgFuenteEstructuraRepository.buscarFuenteEstructura(normaLegalRequest.getDelito().getCabArticulo().getIdFuenteNormativa(), normaLegalRequest.getDelito().getCabArticulo().getIdCapitulo());
-        movDelito.setMovDelitoId(MaxIdDelito);
-        movDelito.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
-        movDelito.setArticulo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
-        movDelito.setSumilla(normaLegalRequest.getDelito().getCabArticulo().getSumilla());
-        movDelito.setMaeEstadoDelito(estadoDelitoRegistrado);
-        movDelito.setFecha(LocalDate.now());
-        movDelito.setFlag("I");
-        movDelito.setUid("tud");
-        movDelito.setCfgFuenteEstructura(cfgFuenteEstructura);
-        articuloRepository.save(movDelito);
-
-        List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
-        procesarDetallesDelitoIncorpora(movDelitoDTODet, normaLegalRequest, formatter, movDelito);
-
-        normaLegalDelito.setNormaLegalDelitosId(idnormaLegalDelito);
-        normaLegalDelito.setMovDelito(movDelito);
-        normaLegalDelito.setNormaLegal(normaLegal);
-        normaLegalDelito.setTipoMovimiento(tipoMovimiento);
-        normaLegalDelito.setFechaRegistro(LocalDate.now());
-        normaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
-        normaLegalDelito.setFecha(LocalDate.now());
-        normaLegalDelito.setFlag("I");
-        normaLegalDelito.setUsuario(usuario);
-        relacionNormaDelitoRepository.save(normaLegalDelito);
-    }
-
-    private void procesarDetallesDelitoIncorpora(List<DetalleArticuloDTO> movDelitoDTODet, NormaLegalRequest request, DateTimeFormatter formatter, MovDelito movDelito) {
-        Long maxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
-        List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
-        List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
-        List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
-
-        for (DetalleArticuloDTO detalle : movDelitoDTODet) {
-            MovDelitosDet movDelitosDet;
-            switch (detalle.getNivel()) {
-                case 1:
-                    movDelitosDet = crearDetalleDelitoIncorpora(detalle, request, maxIdDelitoDet, Constant.PARRAFO, formatter, movDelito);
-                    listDelitosParrafo.add(movDelitosDet);
-                    break;
-                case 2:
-                    movDelitosDet = crearDetalleDelitoIncorpora(detalle, request, maxIdDelitoDet, Constant.NUMERAL, formatter, movDelito);
-                    listDelitosNumeral.add(movDelitosDet);
-                    break;
-                case 3:
-                    movDelitosDet = crearDetalleDelitoIncorpora(detalle, request, maxIdDelitoDet, Constant.LITERAL, formatter, movDelito);
-                    listDelitosLiteral.add(movDelitosDet);
-                    break;
-                default:
-                    throw new IllegalArgumentException("Nivel no reconocido: " + detalle.getNivel());
-            }
-            maxIdDelitoDet++;
-        }
-
-        relacionarDelitosIncorpora(listDelitosParrafo, listDelitosNumeral);
-        relacionarDelitosIncorpora(listDelitosNumeral, listDelitosLiteral);
-    }
-
-    private MovDelitosDet crearDetalleDelitoIncorpora(DetalleArticuloDTO detalle, NormaLegalRequest request, Long maxIdDelitoDet, Long tipoDelitoId, DateTimeFormatter formatter, MovDelito movDelito) {
-        MovDelitosDet movDelitosDet = new MovDelitosDet();
-        movDelitosDet.setMovDelitosDetId(maxIdDelitoDet);
-        movDelitosDet.setDelito(movDelito);
-        movDelitosDet.setTipoDelitoDetalle(maeTipoDelitoDetalleRepository.findById(tipoDelitoId)
-                .orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado")));
-        movDelitosDet.setCodigo(request.getDelito().getCabArticulo().getArticulo() + "." + detalle.getNumeracion() + ".0.0");
-        movDelitosDet.setPenaMin(detalle.getPenaMin());
-        movDelitosDet.setPenaMax(detalle.getPenaMax());
-        movDelitosDet.setFechaIniVigencia(detalle.getFechaInicioVigencia());
-        movDelitosDet.setFechaFinVigencia(Constant.ACTIVO);
-        movDelitosDet.setModificado(detalle.getFlagModificado());
-        movDelitosDet.setEstado(Constant.ESTADO_ACTIVO);
-        movDelitosDet.setVersion(1);
-        movDelitosDet.setVigente(Constant.ESTADO_ACTIVO);
-        movDelitosDet.setCodigoDelito(detalle.getNumeracion());
-        movDelitosDet.setDescripcionDelito(detalle.getNombre());
-        movDelitosDet.setEstadoDelitosDet(maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO)
-                .orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado")));
-        movDelitosDet.setFecha(LocalDate.now());
-        movDelitosDet.setFlag("I");
-        movDelitosDet.setUid("tud");
-        movDelitosDet.setCodigoTud(detalle.getId());
-        movDelitosDet.setDelitosAncestro(detalle.getIdRef());
-        movDelitosDet.setEstadoDelitoDetalle(1);
-        movDelitosDetRepository.save(movDelitosDet);
-        return movDelitosDet;
-    }
-
-    private void relacionarDelitosIncorpora(List<MovDelitosDet> padres, List<MovDelitosDet> hijos) {
-        for (MovDelitosDet padre : padres) {
-            for (MovDelitosDet hijo : hijos) {
-                if (Objects.equals(hijo.getDelitosAncestro(), padre.getCodigoTud())) {
-                    hijo.setDelitosDetPadre(padre.getMovDelitosDetId());
-                    hijo.setCodigo(hijo.getCodigo() + padre.getCodigoDelito().trim() + "." + hijo.getCodigoDelito().trim() + "0");
-                    movDelitosDetRepository.save(hijo);
-                }
-            }
-        }
-    }
-
-    //endregion
-
-    private void actualizarEstadoDelito(NormaLegalRequest request, DateTimeFormatter formatter) {
-        MaeEstadoDelitosDet estadoDelitoEliminado = maeEstadoDelitoDetRepository.findById(Constant.ELIMINAR_NUEVO)
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(request.getDelitoId());
-        for (MovDelitosDet delitos : movDelitosDets) {
-            delitos.setEstadoDelitoDetalle(0);
-            delitos.setEstado(Constant.ESTADO_INACTIVO);
-            delitos.setVigente(Constant.ESTADO_INACTIVO);
-            delitos.setFecha(LocalDate.now());
-            delitos.setEstadoDelitosDet(estadoDelitoEliminado);
-            delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
-            movDelitosDetRepository.save(delitos);
-        }
-    }
-
-    private MovDelito crearNuevoDelito(NormaLegalRequest request, Long MaxIdDelito) {
-        MovDelito movDelito = new MovDelito();
-        CfgFuenteEstructura cfgFuenteEstructura = cfgFuenteEstructuraRepository.buscarFuenteEstructura(
-                request.getDelito().getCabArticulo().getIdFuenteNormativa(), request.getDelito().getCabArticulo().getIdCapitulo());
-        movDelito.setMovDelitoId(MaxIdDelito);
-        movDelito.setCodigo(request.getDelito().getCabArticulo().getArticulo());
-        movDelito.setArticulo(request.getDelito().getCabArticulo().getArticulo());
-        movDelito.setSumilla(request.getDelito().getCabArticulo().getSumilla());
-        movDelito.setMaeEstadoDelito(maeEstadoDelitoRepository.findById(Constant.REGISTRAR_NUEVO)
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO)));
-        movDelito.setFecha(LocalDate.now());
-        movDelito.setFlag("I");
-        movDelito.setUid("tud");
-        movDelito.setCfgFuenteEstructura(cfgFuenteEstructura);
-        articuloRepository.save(movDelito);
-        return movDelito;
-    }
-
-    private void procesarDetallesDelito(List<DetalleArticuloDTO> movDelitoDTODet, NormaLegalRequest request, DateTimeFormatter formatter) {
-        Long maxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
-        List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
-        List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
-        List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
-
-        for (DetalleArticuloDTO detalle : movDelitoDTODet) {
-            MovDelitosDet movDelitosDet;
-            switch (detalle.getNivel()) {
-                case 1:
-                    movDelitosDet = crearDetalleDelito(detalle, request, maxIdDelitoDet, Constant.PARRAFO, formatter);
-                    listDelitosParrafo.add(movDelitosDet);
-                    break;
-                case 2:
-                    movDelitosDet = crearDetalleDelito(detalle, request, maxIdDelitoDet, Constant.NUMERAL, formatter);
-                    listDelitosNumeral.add(movDelitosDet);
-                    break;
-                case 3:
-                    movDelitosDet = crearDetalleDelito(detalle, request, maxIdDelitoDet, Constant.LITERAL, formatter);
-                    listDelitosLiteral.add(movDelitosDet);
-                    break;
-                default:
-                    throw new IllegalArgumentException("Nivel no reconocido: " + detalle.getNivel());
-            }
-            maxIdDelitoDet++;
-        }
-
-        relacionarDelitos(listDelitosParrafo, listDelitosNumeral);
-        relacionarDelitos(listDelitosNumeral, listDelitosLiteral);
-    }
-
-    private MovDelitosDet crearDetalleDelito(DetalleArticuloDTO detalle, NormaLegalRequest request, Long maxIdDelitoDet, Long tipoDelitoId, DateTimeFormatter formatter) {
-        MovDelitosDet movDelitosDet = new MovDelitosDet();
-        movDelitosDet.setMovDelitosDetId(maxIdDelitoDet);
-        movDelitosDet.setDelito(articuloRepository.findById(request.getDelitoId())
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO)));
-        movDelitosDet.setTipoDelitoDetalle(maeTipoDelitoDetalleRepository.findById(tipoDelitoId)
-                .orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado")));
-        movDelitosDet.setCodigo(request.getDelito().getCabArticulo().getArticulo() + "." + detalle.getNumeracion() + ".0.0");
-        movDelitosDet.setPenaMin(detalle.getPenaMin());
-        movDelitosDet.setPenaMax(detalle.getPenaMax());
-        movDelitosDet.setFechaIniVigencia(detalle.getFechaInicioVigencia());
-        movDelitosDet.setFechaFinVigencia(Constant.ACTIVO);
-        movDelitosDet.setModificado(detalle.getFlagModificado());
-        movDelitosDet.setEstado(Constant.ESTADO_ACTIVO);
-        movDelitosDet.setVersion(1);
-        movDelitosDet.setVigente(Constant.ESTADO_ACTIVO);
-        movDelitosDet.setCodigoDelito(detalle.getNumeracion());
-        movDelitosDet.setDescripcionDelito(detalle.getNombre());
-        movDelitosDet.setEstadoDelitosDet(maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO)
-                .orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado")));
-        movDelitosDet.setFecha(LocalDate.now());
-        movDelitosDet.setFlag("I");
-        movDelitosDet.setUid("tud");
-        movDelitosDet.setCodigoTud(detalle.getId());
-        movDelitosDet.setDelitosAncestro(detalle.getIdRef());
-        movDelitosDet.setEstadoDelitoDetalle(1);
-        movDelitosDetRepository.save(movDelitosDet);
-        return movDelitosDet;
-    }
-
-    private void relacionarDelitos(List<MovDelitosDet> padres, List<MovDelitosDet> hijos) {
-        for (MovDelitosDet padre : padres) {
-            for (MovDelitosDet hijo : hijos) {
-                if (Objects.equals(hijo.getDelitosAncestro(), padre.getCodigoTud())) {
-                    hijo.setDelitosDetPadre(padre.getMovDelitosDetId());
-                    hijo.setCodigo(hijo.getCodigo() + padre.getCodigoDelito().trim() + "." + hijo.getCodigoDelito().trim() + "0");
-                    movDelitosDetRepository.save(hijo);
-                }
-            }
-        }
-    }
-
-
-    //region Métodos de handleDerogarTotal
-
-    private void handleDerogarTotal(NormaLegalRequest request, MovNormaLegal normaLegal, Usuario usuario, Long idNormaLegalDelito) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
-        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.DEROGAR_TOTAL)
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        MovNormaLegalDelito normaLegalDelito = normaLegalRepository.normaLegalDelito(request.getDecretoId(), request.getDelitoId());
-        MovDelito movDelito = articuloRepository.findById(request.getDelitoId())
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
-
-        if (normaLegalDelito != null) {
-            /*Actualiza el estado relacion normaLegalDelito*/
-            actualizarEstadoRelacionNormaLegalDelito(normaLegalDelito, usuario, formatter);
-
-            /*Actualiza el estado del detalle Actual*/
-            actualizarEstadoDetalleActual(request, formatter);
-        } else {
-            /*Actualiza el estado del detalle Actual*/
-            MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO)
-                    .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-            List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(request.getDelitoId());
-            for (MovDelitosDet delitos : movDelitosDets) {
-                delitos.setEstadoDelitoDetalle(0);
-                delitos.setEstado(Constant.ESTADO_INACTIVO);
-                delitos.setVigente(Constant.ESTADO_INACTIVO);
-                delitos.setFecha(LocalDate.now());
-                delitos.setEstadoDelitosDet(estadoDelitoArchivado);
-                delitos.setFechaFinVigencia(request.getDelito().getCabArticulo().getFechaRegistro());
-                movDelitosDetRepository.save(delitos);
-            }
-
-            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
-            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
-            nuevoNormaLegalDelito.setMovDelito(movDelito);
-            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
-            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
-            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
-            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
-            nuevoNormaLegalDelito.setFecha(LocalDate.now());
-            nuevoNormaLegalDelito.setFlag("I");
-            nuevoNormaLegalDelito.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
-        }
-    }
-
-    private void actualizarEstadoRelacionNormaLegalDelito(MovNormaLegalDelito normaLegalDelito, Usuario usuario, DateTimeFormatter formatter) {
-        normaLegalDelito.setFecha(LocalDate.now());
-        normaLegalDelito.setFlag("U");
-        normaLegalDelito.setUsuario(usuario);
-        relacionNormaDelitoRepository.save(normaLegalDelito);
-    }
-
-    private void actualizarEstadoDetalleActual(NormaLegalRequest request, DateTimeFormatter formatter) {
-        List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(request.getDelitoId());
-        for (MovDelitosDet delitos : movDelitosDets) {
-            delitos.setFecha(LocalDate.now());
-            delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
-            movDelitosDetRepository.save(delitos);
-        }
-    }
-    //endregion
-
-    //region Métodos de handleReubicar
-
-    private void handleReubicar(NormaLegalRequest request, MovNormaLegal normaLegal, Usuario usuario, Long idNormaLegalDelito) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
-        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.REUBICAR)
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        MaeTipoMovimiento tipoMovimientoNuevo = maeTipoMovimientoRepository.findById(Constant.NUEVO)
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        MovNormaLegalDelito normaLegalDelito = normaLegalRepository.normaLegalDelito(request.getDecretoId(), request.getDelitoId());
-        MovDelito movDelito = articuloRepository.findById(request.getDelitoId())
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
-
-        if (normaLegalDelito != null) {
-            /*Actualiza el estado relacion normaLegalDelito*/
-            actualizarEstadoRelacionNormaLegalDelito(normaLegalDelito, usuario, formatter);
-
-            /*Inserta Relacion de Delito Actual*/
-            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
-            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
-            nuevoNormaLegalDelito.setMovDelito(movDelito);
-            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
-            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
-            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
-            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
-            nuevoNormaLegalDelito.setFecha(LocalDate.now());
-            nuevoNormaLegalDelito.setFlag("I");
-            nuevoNormaLegalDelito.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
-
-            /*Inserta Cabecera de Delito Nuevo*/
-            MovDelito nuevoMovDelito = crearNuevoDelito(request, articuloRepository.MaxDelitos());
-            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
-            procesarDetallesDelito(movDelitoDTODet, request, formatter);
-            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito + 1);
-            nuevoNormaLegalDelito.setMovDelito(nuevoMovDelito);
-            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
-            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimientoNuevo);
-            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
-            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
-            nuevoNormaLegalDelito.setFecha(LocalDate.now());
-            nuevoNormaLegalDelito.setFlag("I");
-            nuevoNormaLegalDelito.setIdMovDelitosReferencia(request.getDelitoId());
-            nuevoNormaLegalDelito.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
-
-            /*Actualiza el estado de la cabecera del Delito*/
-            actualizarEstadoCabeceraDelito(movDelito, Constant.ARCHIVADO);
-            /*Actualiza el estado del detalle Actual*/
-            actualizarEstadoDetalleActual(request, formatter);
-        } else {
-            /*Inserta Relacion de Delito Actual*/
-            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
-            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
-            nuevoNormaLegalDelito.setMovDelito(movDelito);
-            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
-            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
-            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
-            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
-            nuevoNormaLegalDelito.setFecha(LocalDate.now());
-            nuevoNormaLegalDelito.setFlag("I");
-            nuevoNormaLegalDelito.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
-            idNormaLegalDelito++;
-
-            MovDelito nuevoMovDelito = crearNuevoDelito(request, articuloRepository.MaxDelitos());
-            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
-            procesarDetallesDelito(movDelitoDTODet, request, formatter);
-
-            /*Inserta Cabecera de Delito Nuevo*/
-            MovNormaLegalDelito nuevoNormaLegalDelitoNuevo = new MovNormaLegalDelito();
-            nuevoNormaLegalDelitoNuevo.setNormaLegalDelitosId(idNormaLegalDelito);
-            nuevoNormaLegalDelitoNuevo.setMovDelito(nuevoMovDelito);
-            nuevoNormaLegalDelitoNuevo.setNormaLegal(normaLegal);
-            nuevoNormaLegalDelitoNuevo.setTipoMovimiento(tipoMovimientoNuevo);
-            nuevoNormaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
-            nuevoNormaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
-            nuevoNormaLegalDelitoNuevo.setFecha(LocalDate.now());
-            nuevoNormaLegalDelitoNuevo.setFlag("I");
-            nuevoNormaLegalDelitoNuevo.setIdMovDelitosReferencia(request.getDelitoId());
-            nuevoNormaLegalDelitoNuevo.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(nuevoNormaLegalDelitoNuevo);
-
-            actualizarEstadoCabeceraDelito(movDelito, Constant.ARCHIVADO);
-            actualizarEstadoDetalleActual(request, formatter);
-        }
-    }
-
-    private void actualizarEstadoCabeceraDelito(MovDelito movDelito, Long estadoId) {
-        MaeEstadoDelito estadoDelitoArchivado = maeEstadoDelitoRepository.findById(estadoId)
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        movDelito.setMaeEstadoDelito(estadoDelitoArchivado);
-        movDelito.setFecha(LocalDate.now());
-        movDelito.setFlag("U");
-        articuloRepository.save(movDelito);
-    }
-    //endregion
-
-    //region Métodos de handleModificar
-
-    private void handleModificar(NormaLegalRequest request, MovNormaLegal normaLegal, Usuario usuario, Long idNormaLegalDelito) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
-        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.MODIFICAR)
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        MovNormaLegalDelito normaLegalDelito = normaLegalRepository.normaLegalDelito(request.getDecretoId(), request.getDelitoId());
-        MovDelito movDelito = articuloRepository.findById(request.getDelitoId())
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
-
-        if (normaLegalDelito != null) {
-            /*Actualiza el estado relacion normaLegalDelito*/
-            actualizarEstadoRelacionNormaLegalDelito(normaLegalDelito, usuario, formatter);
-
-            /*Actualiza los datos de Delito*/
-            movDelito.setSumilla(request.getDelito().getCabArticulo().getSumilla());
-            movDelito.setFecha(LocalDate.now());
-            movDelito.setFlag("U");
-            articuloRepository.save(movDelito);
-
-            /*Actualiza el estado del detalle Actual*/
-            actualizarEstadoDetalleActual(request, formatter);
-
-            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
-            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
-            procesarDetallesDelito(movDelitoDTODet, request, formatter);
-            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
-            nuevoNormaLegalDelito.setMovDelito(movDelito);
-            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
-            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
-            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
-            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
-            nuevoNormaLegalDelito.setFecha(LocalDate.now());
-            nuevoNormaLegalDelito.setFlag("I");
-            nuevoNormaLegalDelito.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
-        } else {
-            /*NO EXISTE(MovNormaLegalDelito) | NUEVO - BUSQUEDA */
-            /*Actualiza los datos de Delito*/
-            movDelito.setSumilla(request.getDelito().getCabArticulo().getSumilla());
-            movDelito.setFecha(LocalDate.now());
-            movDelito.setFlag("U");
-            articuloRepository.save(movDelito);
-
-            /*Actualiza el estado del detalle Actual*/
-            actualizarEstadoDetalleActual(request, formatter);
-
-            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
-            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
-            procesarDetallesDelito(movDelitoDTODet, request, formatter);
-            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
-            nuevoNormaLegalDelito.setMovDelito(movDelito);
-            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
-            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
-            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
-            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
-            nuevoNormaLegalDelito.setFecha(LocalDate.now());
-            nuevoNormaLegalDelito.setFlag("I");
-            nuevoNormaLegalDelito.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
-        }
-    }
-    //endregion
-
-    //region Métodos de handleDerogarParcial
-
-    private void handleDerogarParcial(NormaLegalRequest request, MovNormaLegal normaLegal, Usuario usuario, Long idNormaLegalDelito) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
-        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.DEROGAR_PARCIAL)
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        MaeTipoMovimiento tipoMovimientoNuevo = maeTipoMovimientoRepository.findById(Constant.NUEVO)
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-        List<MovNormaLegalDelito> normaLegalDelitoList = normaLegalRepository.normaLegalDelitos(request.getDecretoId(), request.getDelitoId());
-        MovDelito movDelito = articuloRepository.findById(request.getDelitoId())
-                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
-
-        if (normaLegalDelitoList.size() > 0) {
-            for (MovNormaLegalDelito normaLegalDelito : normaLegalDelitoList) {
-                /*Actualiza el estado de normaLegalDelito*/
-                actualizarEstadoRelacionNormaLegalDelito(normaLegalDelito, usuario, formatter);
-            }
-
-            MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO)
-                    .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-            /*Actualiza el estado del detalle Actual*/
-            actualizarEstadoDetalleActual(request, formatter);
-
-            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
-            procesarDetallesDelito(movDelitoDTODet, request, formatter);
-
-            /*Inserta Relacion de Delito Nuevo*/
-            MovNormaLegalDelito normaLegalDelitoNuevo = new MovNormaLegalDelito();
-            normaLegalDelitoNuevo.setNormaLegalDelitosId(idNormaLegalDelito);
-            normaLegalDelitoNuevo.setMovDelito(movDelito);
-            normaLegalDelitoNuevo.setNormaLegal(normaLegal);
-            normaLegalDelitoNuevo.setTipoMovimiento(tipoMovimientoNuevo);
-            normaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
-            normaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
-            normaLegalDelitoNuevo.setFecha(LocalDate.now());
-            normaLegalDelitoNuevo.setFlag("I");
-            normaLegalDelitoNuevo.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(normaLegalDelitoNuevo);
-        } else {
-            MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO)
-                    .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
-            actualizarEstadoDetalleActual(request, formatter);
-
-            /*Inserta Relacion de Delito Actual*/
-            MovNormaLegalDelito normaLegalDelitoActual = new MovNormaLegalDelito();
-            normaLegalDelitoActual.setNormaLegalDelitosId(idNormaLegalDelito);
-            normaLegalDelitoActual.setMovDelito(movDelito);
-            normaLegalDelitoActual.setNormaLegal(normaLegal);
-            normaLegalDelitoActual.setTipoMovimiento(tipoMovimiento);
-            normaLegalDelitoActual.setFechaRegistro(LocalDate.now());
-            normaLegalDelitoActual.setEstado(Constant.ESTADO_ACTIVO);
-            normaLegalDelitoActual.setFecha(LocalDate.now());
-            normaLegalDelitoActual.setFlag("I");
-            normaLegalDelitoActual.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(normaLegalDelitoActual);
-            idNormaLegalDelito++;
-
-            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
-            procesarDetallesDelito(movDelitoDTODet, request, formatter);
-
-            /*Inserta Relacion de Delito Nuevo*/
-            MovNormaLegalDelito normaLegalDelitoNuevo = new MovNormaLegalDelito();
-            normaLegalDelitoNuevo.setNormaLegalDelitosId(idNormaLegalDelito);
-            normaLegalDelitoNuevo.setMovDelito(movDelito);
-            normaLegalDelitoNuevo.setNormaLegal(normaLegal);
-            normaLegalDelitoNuevo.setTipoMovimiento(tipoMovimientoNuevo);
-            normaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
-            normaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
-            normaLegalDelitoNuevo.setFecha(LocalDate.now());
-            normaLegalDelitoNuevo.setFlag("I");
-            normaLegalDelitoNuevo.setUsuario(usuario);
-            relacionNormaDelitoRepository.save(normaLegalDelitoNuevo);
-        }
-    }
-    //endregion
-
-
     /*validarNormaLegalDesfasa*/
-	@Override
-	public ResultadoDTO validarNormaLegalDesfasa(NormaLegalRequest normaLegalRequest, String codigoUsuario) {
+    @Override
+    public ResultadoDTO validarNormaLegalDesfasa(NormaLegalRequest normaLegalRequest, String codigoUsuario) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
         ResultadoDTO resultadoDTO = new ResultadoDTO();
         Long idnormaLegalDelito = relacionNormaDelitoRepository.MaxId();
@@ -1993,7 +1402,605 @@ public class NormaLegalService implements INormaLegalService {
             resultadoDTO.setResultado("Los Datos se guardaron correctamente");
         }
         return resultadoDTO;
-	}
+    }
+
+    //region auxiliares
+
+    private MovDelito crearNuevoDelito(NormaLegalRequest request, Long MaxIdDelito) {
+        MovDelito movDelito = new MovDelito();
+        CfgFuenteEstructura cfgFuenteEstructura = cfgFuenteEstructuraRepository.buscarFuenteEstructura(
+                request.getDelito().getCabArticulo().getIdFuenteNormativa(), request.getDelito().getCabArticulo().getIdCapitulo());
+        movDelito.setMovDelitoId(MaxIdDelito);
+        movDelito.setCodigo(request.getDelito().getCabArticulo().getArticulo());
+        movDelito.setArticulo(request.getDelito().getCabArticulo().getArticulo());
+        movDelito.setSumilla(request.getDelito().getCabArticulo().getSumilla());
+        movDelito.setMaeEstadoDelito(maeEstadoDelitoRepository.findById(Constant.REGISTRAR_NUEVO)
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO)));
+        movDelito.setFecha(LocalDate.now());
+        movDelito.setFlag("I");
+        movDelito.setUid("tud");
+        movDelito.setCfgFuenteEstructura(cfgFuenteEstructura);
+        articuloRepository.save(movDelito);
+        return movDelito;
+    }
+
+    private void procesarDetallesDelito(List<DetalleArticuloDTO> movDelitoDTODet, NormaLegalRequest request, DateTimeFormatter formatter) {
+        Long maxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+        List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
+        List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
+        List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
+
+        for (DetalleArticuloDTO detalle : movDelitoDTODet) {
+            MovDelitosDet movDelitosDet;
+            switch (detalle.getNivel()) {
+                case 1:
+                    movDelitosDet = crearDetalleDelito(detalle, request, maxIdDelitoDet, Constant.PARRAFO, formatter);
+                    listDelitosParrafo.add(movDelitosDet);
+                    break;
+                case 2:
+                    movDelitosDet = crearDetalleDelito(detalle, request, maxIdDelitoDet, Constant.NUMERAL, formatter);
+                    listDelitosNumeral.add(movDelitosDet);
+                    break;
+                case 3:
+                    movDelitosDet = crearDetalleDelito(detalle, request, maxIdDelitoDet, Constant.LITERAL, formatter);
+                    listDelitosLiteral.add(movDelitosDet);
+                    break;
+                default:
+                    throw new IllegalArgumentException("Nivel no reconocido: " + detalle.getNivel());
+            }
+            maxIdDelitoDet++;
+        }
+
+        relacionarDelitos(listDelitosParrafo, listDelitosNumeral);
+        relacionarDelitos(listDelitosNumeral, listDelitosLiteral);
+    }
+
+    private MovDelitosDet crearDetalleDelito(DetalleArticuloDTO detalle, NormaLegalRequest request, Long maxIdDelitoDet, Long tipoDelitoId, DateTimeFormatter formatter) {
+        MovDelitosDet movDelitosDet = new MovDelitosDet();
+        movDelitosDet.setMovDelitosDetId(maxIdDelitoDet);
+        movDelitosDet.setDelito(articuloRepository.findById(request.getDelitoId())
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO)));
+        movDelitosDet.setTipoDelitoDetalle(maeTipoDelitoDetalleRepository.findById(tipoDelitoId)
+                .orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado")));
+        movDelitosDet.setCodigo(request.getDelito().getCabArticulo().getArticulo() + "." + detalle.getNumeracion() + ".0.0");
+        movDelitosDet.setPenaMin(detalle.getPenaMin());
+        movDelitosDet.setPenaMax(detalle.getPenaMax());
+        movDelitosDet.setFechaIniVigencia(detalle.getFechaInicioVigencia());
+        movDelitosDet.setFechaFinVigencia(Constant.ACTIVO);
+        movDelitosDet.setModificado(detalle.getFlagModificado());
+        movDelitosDet.setEstado(Constant.ESTADO_ACTIVO);
+        movDelitosDet.setVersion(1);
+        movDelitosDet.setVigente(Constant.ESTADO_ACTIVO);
+        movDelitosDet.setCodigoDelito(detalle.getNumeracion());
+        movDelitosDet.setDescripcionDelito(detalle.getNombre());
+        movDelitosDet.setEstadoDelitosDet(maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO)
+                .orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado")));
+        movDelitosDet.setFecha(LocalDate.now());
+        movDelitosDet.setFlag("I");
+        movDelitosDet.setUid("tud");
+        movDelitosDet.setCodigoTud(detalle.getId());
+        movDelitosDet.setDelitosAncestro(detalle.getIdRef());
+        movDelitosDet.setEstadoDelitoDetalle(1);
+        movDelitosDetRepository.save(movDelitosDet);
+        return movDelitosDet;
+    }
+
+    private void relacionarDelitos(List<MovDelitosDet> padres, List<MovDelitosDet> hijos) {
+        for (MovDelitosDet padre : padres) {
+            for (MovDelitosDet hijo : hijos) {
+                if (Objects.equals(hijo.getDelitosAncestro(), padre.getCodigoTud())) {
+                    hijo.setDelitosDetPadre(padre.getMovDelitosDetId());
+                    hijo.setCodigo(hijo.getCodigo() + padre.getCodigoDelito().trim() + "." + hijo.getCodigoDelito().trim() + "0");
+                    movDelitosDetRepository.save(hijo);
+                }
+            }
+        }
+    }
+
+    //endregion    
+
+    @Override
+    @Transactional
+    public ResultadoDTO guardarNormaLegal(NormaLegalRequest normaLegalRequest, String codigoUsuario) {
+        System.out.println("guardarNormaLegal - version NUEVA");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
+        ResultadoDTO resultadoDTO = new ResultadoDTO();
+        Long idnormaLegalDelito = relacionNormaDelitoRepository.MaxId();
+        if (idnormaLegalDelito == null) {
+            idnormaLegalDelito = 1L;
+        }
+        MovNormaLegal normaLegal = normaLegalRepository.findById(normaLegalRequest.getDecretoId())
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_NORMA_NO_ENCONTRADA));
+        Usuario usuario = usuarioRepository.buscarUsuarioxCodigo(codigoUsuario);
+
+        switch (normaLegalRequest.getAccion()) {
+            case 3:
+                handleIncorporar(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
+                break;
+            case 6:
+                handleDerogarTotal(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
+                break;
+            case 4:
+                handleReubicar(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
+                break;
+            case 2:
+                handleModificar(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
+                break;
+            case 7:
+                handleDerogarParcial(normaLegalRequest, normaLegal, usuario, idnormaLegalDelito);
+                break;
+            default:
+                throw new IllegalArgumentException("Acción no reconocida: " + normaLegalRequest.getAccion());
+        }
+
+        resultadoDTO.setResultado("Los Datos se guardaron correctamente");
+        return resultadoDTO;
+    }
+
+
+    //region Métodos de handleIncorporar
+
+    private void handleIncorporar(NormaLegalRequest normaLegalRequest, MovNormaLegal normaLegal, Usuario usuario, Long idnormaLegalDelito) {
+
+        Long MaxIdDelito = articuloRepository.MaxDelitos();
+        MovNormaLegalDelito normaLegalDelito = new MovNormaLegalDelito();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
+
+        MaeEstadoDelito estadoDelitoRegistrado = maeEstadoDelitoRepository.findById(Constant.REGISTRAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.INCORPORAR).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+
+        if (normaLegalRequest.getDelitoId() != null) {
+            actualizarDelitoExistenteIncorpora(normaLegalRequest, usuario, normaLegalDelito, estadoDelitoRegistrado, tipoMovimiento, formatter);
+        } else {
+            crearNuevoDelitoIncorpora(normaLegalRequest, usuario, MaxIdDelito, normaLegalDelito, estadoDelitoRegistrado, tipoMovimiento, formatter, idnormaLegalDelito, normaLegal);
+        }
+    }
+
+    private void actualizarDelitoExistenteIncorpora(NormaLegalRequest normaLegalRequest, Usuario usuario, MovNormaLegalDelito normaLegalDelito, MaeEstadoDelito estadoDelitoRegistrado, MaeTipoMovimiento tipoMovimiento, DateTimeFormatter formatter) {
+        MaeEstadoDelitosDet estadoDelitoEliminado = maeEstadoDelitoDetRepository.findById(Constant.ELIMINAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        MovDelito movDelito = articuloRepository.findById(normaLegalRequest.getDelitoId()).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+
+        List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+        for (MovDelitosDet delitos : movDelitosDets) {
+            delitos.setEstadoDelitoDetalle(0);
+            delitos.setEstado(Constant.ESTADO_INACTIVO);
+            delitos.setVigente(Constant.ESTADO_INACTIVO);
+            delitos.setFecha(LocalDate.now());
+            delitos.setEstadoDelitosDet(estadoDelitoEliminado);
+            delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+            movDelitosDetRepository.save(delitos);
+        }
+
+        List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
+        procesarDetallesDelitoIncorpora(movDelitoDTODet, normaLegalRequest, formatter, movDelito);
+
+        normaLegalDelito = normaLegalRepository.normaLegalDelito(normaLegalRequest.getDecretoId(), normaLegalRequest.getDelitoId());
+        normaLegalDelito.setFecha(LocalDate.now());
+        normaLegalDelito.setUsuario(usuario);
+        relacionNormaDelitoRepository.save(normaLegalDelito);
+    }
+
+    private void crearNuevoDelitoIncorpora(NormaLegalRequest normaLegalRequest, Usuario usuario, Long MaxIdDelito, MovNormaLegalDelito normaLegalDelito, MaeEstadoDelito estadoDelitoRegistrado, MaeTipoMovimiento tipoMovimiento, DateTimeFormatter formatter, Long idnormaLegalDelito, MovNormaLegal normaLegal) {
+        MovDelito movDelito = new MovDelito();
+        CfgFuenteEstructura cfgFuenteEstructura = cfgFuenteEstructuraRepository.buscarFuenteEstructura(normaLegalRequest.getDelito().getCabArticulo().getIdFuenteNormativa(), normaLegalRequest.getDelito().getCabArticulo().getIdCapitulo());
+        movDelito.setMovDelitoId(MaxIdDelito);
+        movDelito.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
+        movDelito.setArticulo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
+        movDelito.setSumilla(normaLegalRequest.getDelito().getCabArticulo().getSumilla());
+        movDelito.setMaeEstadoDelito(estadoDelitoRegistrado);
+        movDelito.setFecha(LocalDate.now());
+        movDelito.setFlag("I");
+        movDelito.setUid("tud");
+        movDelito.setCfgFuenteEstructura(cfgFuenteEstructura);
+        articuloRepository.save(movDelito);
+
+        List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
+        procesarDetallesDelitoIncorpora(movDelitoDTODet, normaLegalRequest, formatter, movDelito);
+
+        normaLegalDelito.setNormaLegalDelitosId(idnormaLegalDelito);
+        normaLegalDelito.setMovDelito(movDelito);
+        normaLegalDelito.setNormaLegal(normaLegal);
+        normaLegalDelito.setTipoMovimiento(tipoMovimiento);
+        normaLegalDelito.setFechaRegistro(LocalDate.now());
+        normaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+        normaLegalDelito.setFecha(LocalDate.now());
+        normaLegalDelito.setFlag("I");
+        normaLegalDelito.setUsuario(usuario);
+        relacionNormaDelitoRepository.save(normaLegalDelito);
+    }
+
+    private void procesarDetallesDelitoIncorpora(List<DetalleArticuloDTO> movDelitoDTODet, NormaLegalRequest request, DateTimeFormatter formatter, MovDelito movDelito) {
+        Long maxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+        List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
+        List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
+        List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
+
+        for (DetalleArticuloDTO detalle : movDelitoDTODet) {
+            MovDelitosDet movDelitosDet;
+            switch (detalle.getNivel()) {
+                case 1:
+                    movDelitosDet = crearDetalleDelitoIncorpora(detalle, request, maxIdDelitoDet, Constant.PARRAFO, formatter, movDelito);
+                    listDelitosParrafo.add(movDelitosDet);
+                    break;
+                case 2:
+                    movDelitosDet = crearDetalleDelitoIncorpora(detalle, request, maxIdDelitoDet, Constant.NUMERAL, formatter, movDelito);
+                    listDelitosNumeral.add(movDelitosDet);
+                    break;
+                case 3:
+                    movDelitosDet = crearDetalleDelitoIncorpora(detalle, request, maxIdDelitoDet, Constant.LITERAL, formatter, movDelito);
+                    listDelitosLiteral.add(movDelitosDet);
+                    break;
+                default:
+                    throw new IllegalArgumentException("Nivel no reconocido: " + detalle.getNivel());
+            }
+            maxIdDelitoDet++;
+        }
+
+        relacionarDelitosIncorpora(listDelitosParrafo, listDelitosNumeral);
+        relacionarDelitosIncorpora(listDelitosNumeral, listDelitosLiteral);
+    }
+
+    private MovDelitosDet crearDetalleDelitoIncorpora(DetalleArticuloDTO detalle, NormaLegalRequest request, Long maxIdDelitoDet, Long tipoDelitoId, DateTimeFormatter formatter, MovDelito movDelito) {
+        MovDelitosDet movDelitosDet = new MovDelitosDet();
+        movDelitosDet.setMovDelitosDetId(maxIdDelitoDet);
+        movDelitosDet.setDelito(movDelito);
+        movDelitosDet.setTipoDelitoDetalle(maeTipoDelitoDetalleRepository.findById(tipoDelitoId)
+                .orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado")));
+        movDelitosDet.setCodigo(request.getDelito().getCabArticulo().getArticulo() + "." + detalle.getNumeracion() + ".0.0");
+        movDelitosDet.setPenaMin(detalle.getPenaMin());
+        movDelitosDet.setPenaMax(detalle.getPenaMax());
+        movDelitosDet.setFechaIniVigencia(detalle.getFechaInicioVigencia());
+        movDelitosDet.setFechaFinVigencia(Constant.ACTIVO);
+        movDelitosDet.setModificado(detalle.getFlagModificado());
+        movDelitosDet.setEstado(Constant.ESTADO_ACTIVO);
+        movDelitosDet.setVersion(1);
+        movDelitosDet.setVigente(Constant.ESTADO_ACTIVO);
+        movDelitosDet.setCodigoDelito(detalle.getNumeracion());
+        movDelitosDet.setDescripcionDelito(detalle.getNombre());
+        movDelitosDet.setEstadoDelitosDet(maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO)
+                .orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado")));
+        movDelitosDet.setFecha(LocalDate.now());
+        movDelitosDet.setFlag("I");
+        movDelitosDet.setUid("tud");
+        movDelitosDet.setCodigoTud(detalle.getId());
+        movDelitosDet.setDelitosAncestro(detalle.getIdRef());
+        movDelitosDet.setEstadoDelitoDetalle(1);
+        movDelitosDetRepository.save(movDelitosDet);
+        return movDelitosDet;
+    }
+
+    private void relacionarDelitosIncorpora(List<MovDelitosDet> padres, List<MovDelitosDet> hijos) {
+        for (MovDelitosDet padre : padres) {
+            for (MovDelitosDet hijo : hijos) {
+                if (Objects.equals(hijo.getDelitosAncestro(), padre.getCodigoTud())) {
+                    hijo.setDelitosDetPadre(padre.getMovDelitosDetId());
+                    hijo.setCodigo(hijo.getCodigo() + padre.getCodigoDelito().trim() + "." + hijo.getCodigoDelito().trim() + "0");
+                    movDelitosDetRepository.save(hijo);
+                }
+            }
+        }
+    }
+
+    //endregion
+
+    private void actualizarEstadoDelito(NormaLegalRequest request, DateTimeFormatter formatter) {
+        MaeEstadoDelitosDet estadoDelitoEliminado = maeEstadoDelitoDetRepository.findById(Constant.ELIMINAR_NUEVO)
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(request.getDelitoId());
+        for (MovDelitosDet delitos : movDelitosDets) {
+            delitos.setEstadoDelitoDetalle(0);
+            delitos.setEstado(Constant.ESTADO_INACTIVO);
+            delitos.setVigente(Constant.ESTADO_INACTIVO);
+            delitos.setFecha(LocalDate.now());
+            delitos.setEstadoDelitosDet(estadoDelitoEliminado);
+            delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+            movDelitosDetRepository.save(delitos);
+        }
+    }
+
+
+
+    //region Métodos de handleDerogarTotal
+
+    private void handleDerogarTotal(NormaLegalRequest request, MovNormaLegal normaLegal, Usuario usuario, Long idNormaLegalDelito) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
+        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.DEROGAR_TOTAL)
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        MovNormaLegalDelito normaLegalDelito = normaLegalRepository.normaLegalDelito(request.getDecretoId(), request.getDelitoId());
+        MovDelito movDelito = articuloRepository.findById(request.getDelitoId())
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
+
+        if (normaLegalDelito != null) {
+            /*Actualiza el estado relacion normaLegalDelito*/
+            actualizarEstadoRelacionNormaLegalDelito(normaLegalDelito, usuario, formatter);
+
+            /*Actualiza el estado del detalle Actual*/
+            actualizarEstadoDetalleActual(request, formatter);
+        } else {
+            /*Actualiza el estado del detalle Actual*/
+            MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO)
+                    .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(request.getDelitoId());
+            for (MovDelitosDet delitos : movDelitosDets) {
+                delitos.setEstadoDelitoDetalle(0);
+                delitos.setEstado(Constant.ESTADO_INACTIVO);
+                delitos.setVigente(Constant.ESTADO_INACTIVO);
+                delitos.setFecha(LocalDate.now());
+                delitos.setEstadoDelitosDet(estadoDelitoArchivado);
+                delitos.setFechaFinVigencia(request.getDelito().getCabArticulo().getFechaRegistro());
+                movDelitosDetRepository.save(delitos);
+            }
+
+            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
+            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
+            nuevoNormaLegalDelito.setMovDelito(movDelito);
+            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
+            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
+            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
+            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+            nuevoNormaLegalDelito.setFecha(LocalDate.now());
+            nuevoNormaLegalDelito.setFlag("I");
+            nuevoNormaLegalDelito.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
+        }
+    }
+
+    private void actualizarEstadoRelacionNormaLegalDelito(MovNormaLegalDelito normaLegalDelito, Usuario usuario, DateTimeFormatter formatter) {
+        normaLegalDelito.setFecha(LocalDate.now());
+        normaLegalDelito.setFlag("U");
+        normaLegalDelito.setUsuario(usuario);
+        relacionNormaDelitoRepository.save(normaLegalDelito);
+    }
+
+    private void actualizarEstadoDetalleActual(NormaLegalRequest request, DateTimeFormatter formatter) {
+        List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(request.getDelitoId());
+        for (MovDelitosDet delitos : movDelitosDets) {
+            delitos.setFecha(LocalDate.now());
+            delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+            movDelitosDetRepository.save(delitos);
+        }
+    }
+    //endregion
+
+    //region Métodos de handleReubicar
+
+    private void handleReubicar(NormaLegalRequest request, MovNormaLegal normaLegal, Usuario usuario, Long idNormaLegalDelito) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
+        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.REUBICAR)
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        MaeTipoMovimiento tipoMovimientoNuevo = maeTipoMovimientoRepository.findById(Constant.NUEVO)
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        MovNormaLegalDelito normaLegalDelito = normaLegalRepository.normaLegalDelito(request.getDecretoId(), request.getDelitoId());
+        MovDelito movDelito = articuloRepository.findById(request.getDelitoId())
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
+
+        if (normaLegalDelito != null) {
+            /*Actualiza el estado relacion normaLegalDelito*/
+            actualizarEstadoRelacionNormaLegalDelito(normaLegalDelito, usuario, formatter);
+
+            /*Inserta Relacion de Delito Actual*/
+            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
+            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
+            nuevoNormaLegalDelito.setMovDelito(movDelito);
+            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
+            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
+            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
+            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+            nuevoNormaLegalDelito.setFecha(LocalDate.now());
+            nuevoNormaLegalDelito.setFlag("I");
+            nuevoNormaLegalDelito.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
+
+            /*Inserta Cabecera de Delito Nuevo*/
+            MovDelito nuevoMovDelito = crearNuevoDelito(request, articuloRepository.MaxDelitos());
+            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
+            procesarDetallesDelito(movDelitoDTODet, request, formatter);
+            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito + 1);
+            nuevoNormaLegalDelito.setMovDelito(nuevoMovDelito);
+            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
+            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimientoNuevo);
+            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
+            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+            nuevoNormaLegalDelito.setFecha(LocalDate.now());
+            nuevoNormaLegalDelito.setFlag("I");
+            nuevoNormaLegalDelito.setIdMovDelitosReferencia(request.getDelitoId());
+            nuevoNormaLegalDelito.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
+
+            /*Actualiza el estado de la cabecera del Delito*/
+            actualizarEstadoCabeceraDelito(movDelito, Constant.ARCHIVADO);
+            /*Actualiza el estado del detalle Actual*/
+            actualizarEstadoDetalleActual(request, formatter);
+        } else {
+            /*Inserta Relacion de Delito Actual*/
+            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
+            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
+            nuevoNormaLegalDelito.setMovDelito(movDelito);
+            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
+            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
+            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
+            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+            nuevoNormaLegalDelito.setFecha(LocalDate.now());
+            nuevoNormaLegalDelito.setFlag("I");
+            nuevoNormaLegalDelito.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
+            idNormaLegalDelito++;
+
+            MovDelito nuevoMovDelito = crearNuevoDelito(request, articuloRepository.MaxDelitos());
+            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
+            procesarDetallesDelito(movDelitoDTODet, request, formatter);
+
+            /*Inserta Cabecera de Delito Nuevo*/
+            MovNormaLegalDelito nuevoNormaLegalDelitoNuevo = new MovNormaLegalDelito();
+            nuevoNormaLegalDelitoNuevo.setNormaLegalDelitosId(idNormaLegalDelito);
+            nuevoNormaLegalDelitoNuevo.setMovDelito(nuevoMovDelito);
+            nuevoNormaLegalDelitoNuevo.setNormaLegal(normaLegal);
+            nuevoNormaLegalDelitoNuevo.setTipoMovimiento(tipoMovimientoNuevo);
+            nuevoNormaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
+            nuevoNormaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
+            nuevoNormaLegalDelitoNuevo.setFecha(LocalDate.now());
+            nuevoNormaLegalDelitoNuevo.setFlag("I");
+            nuevoNormaLegalDelitoNuevo.setIdMovDelitosReferencia(request.getDelitoId());
+            nuevoNormaLegalDelitoNuevo.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(nuevoNormaLegalDelitoNuevo);
+
+            actualizarEstadoCabeceraDelito(movDelito, Constant.ARCHIVADO);
+            actualizarEstadoDetalleActual(request, formatter);
+        }
+    }
+
+    private void actualizarEstadoCabeceraDelito(MovDelito movDelito, Long estadoId) {
+        MaeEstadoDelito estadoDelitoArchivado = maeEstadoDelitoRepository.findById(estadoId)
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        movDelito.setMaeEstadoDelito(estadoDelitoArchivado);
+        movDelito.setFecha(LocalDate.now());
+        movDelito.setFlag("U");
+        articuloRepository.save(movDelito);
+    }
+    //endregion
+
+    //region Métodos de handleModificar
+
+    private void handleModificar(NormaLegalRequest request, MovNormaLegal normaLegal, Usuario usuario, Long idNormaLegalDelito) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
+        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.MODIFICAR)
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        MovNormaLegalDelito normaLegalDelito = normaLegalRepository.normaLegalDelito(request.getDecretoId(), request.getDelitoId());
+        MovDelito movDelito = articuloRepository.findById(request.getDelitoId())
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
+
+        if (normaLegalDelito != null) {
+            /*Actualiza el estado relacion normaLegalDelito*/
+            actualizarEstadoRelacionNormaLegalDelito(normaLegalDelito, usuario, formatter);
+
+            /*Actualiza los datos de Delito*/
+            movDelito.setSumilla(request.getDelito().getCabArticulo().getSumilla());
+            movDelito.setFecha(LocalDate.now());
+            movDelito.setFlag("U");
+            articuloRepository.save(movDelito);
+
+            /*Actualiza el estado del detalle Actual*/
+            actualizarEstadoDetalleActual(request, formatter);
+
+            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
+            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
+            procesarDetallesDelito(movDelitoDTODet, request, formatter);
+            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
+            nuevoNormaLegalDelito.setMovDelito(movDelito);
+            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
+            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
+            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
+            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+            nuevoNormaLegalDelito.setFecha(LocalDate.now());
+            nuevoNormaLegalDelito.setFlag("I");
+            nuevoNormaLegalDelito.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
+        } else {
+            /*NO EXISTE(MovNormaLegalDelito) | NUEVO - BUSQUEDA */
+            /*Actualiza los datos de Delito*/
+            movDelito.setSumilla(request.getDelito().getCabArticulo().getSumilla());
+            movDelito.setFecha(LocalDate.now());
+            movDelito.setFlag("U");
+            articuloRepository.save(movDelito);
+
+            /*Actualiza el estado del detalle Actual*/
+            actualizarEstadoDetalleActual(request, formatter);
+
+            MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
+            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
+            procesarDetallesDelito(movDelitoDTODet, request, formatter);
+            nuevoNormaLegalDelito.setNormaLegalDelitosId(idNormaLegalDelito);
+            nuevoNormaLegalDelito.setMovDelito(movDelito);
+            nuevoNormaLegalDelito.setNormaLegal(normaLegal);
+            nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
+            nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
+            nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+            nuevoNormaLegalDelito.setFecha(LocalDate.now());
+            nuevoNormaLegalDelito.setFlag("I");
+            nuevoNormaLegalDelito.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
+        }
+    }
+    //endregion
+
+    //region Métodos de handleDerogarParcial
+
+    private void handleDerogarParcial(NormaLegalRequest request, MovNormaLegal normaLegal, Usuario usuario, Long idNormaLegalDelito) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
+        MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.DEROGAR_PARCIAL)
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        MaeTipoMovimiento tipoMovimientoNuevo = maeTipoMovimientoRepository.findById(Constant.NUEVO)
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+        List<MovNormaLegalDelito> normaLegalDelitoList = normaLegalRepository.normaLegalDelitos(request.getDecretoId(), request.getDelitoId());
+        MovDelito movDelito = articuloRepository.findById(request.getDelitoId())
+                .orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
+
+        if (normaLegalDelitoList.size() > 0) {
+            for (MovNormaLegalDelito normaLegalDelito : normaLegalDelitoList) {
+                /*Actualiza el estado de normaLegalDelito*/
+                actualizarEstadoRelacionNormaLegalDelito(normaLegalDelito, usuario, formatter);
+            }
+
+            MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO)
+                    .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            /*Actualiza el estado del detalle Actual*/
+            actualizarEstadoDetalleActual(request, formatter);
+
+            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
+            procesarDetallesDelito(movDelitoDTODet, request, formatter);
+
+            /*Inserta Relacion de Delito Nuevo*/
+            MovNormaLegalDelito normaLegalDelitoNuevo = new MovNormaLegalDelito();
+            normaLegalDelitoNuevo.setNormaLegalDelitosId(idNormaLegalDelito);
+            normaLegalDelitoNuevo.setMovDelito(movDelito);
+            normaLegalDelitoNuevo.setNormaLegal(normaLegal);
+            normaLegalDelitoNuevo.setTipoMovimiento(tipoMovimientoNuevo);
+            normaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
+            normaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
+            normaLegalDelitoNuevo.setFecha(LocalDate.now());
+            normaLegalDelitoNuevo.setFlag("I");
+            normaLegalDelitoNuevo.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(normaLegalDelitoNuevo);
+        } else {
+            MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO)
+                    .orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            actualizarEstadoDetalleActual(request, formatter);
+
+            /*Inserta Relacion de Delito Actual*/
+            MovNormaLegalDelito normaLegalDelitoActual = new MovNormaLegalDelito();
+            normaLegalDelitoActual.setNormaLegalDelitosId(idNormaLegalDelito);
+            normaLegalDelitoActual.setMovDelito(movDelito);
+            normaLegalDelitoActual.setNormaLegal(normaLegal);
+            normaLegalDelitoActual.setTipoMovimiento(tipoMovimiento);
+            normaLegalDelitoActual.setFechaRegistro(LocalDate.now());
+            normaLegalDelitoActual.setEstado(Constant.ESTADO_ACTIVO);
+            normaLegalDelitoActual.setFecha(LocalDate.now());
+            normaLegalDelitoActual.setFlag("I");
+            normaLegalDelitoActual.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(normaLegalDelitoActual);
+            idNormaLegalDelito++;
+
+            List<DetalleArticuloDTO> movDelitoDTODet = request.getDelito().getDetArticulo();
+            procesarDetallesDelito(movDelitoDTODet, request, formatter);
+
+            /*Inserta Relacion de Delito Nuevo*/
+            MovNormaLegalDelito normaLegalDelitoNuevo = new MovNormaLegalDelito();
+            normaLegalDelitoNuevo.setNormaLegalDelitosId(idNormaLegalDelito);
+            normaLegalDelitoNuevo.setMovDelito(movDelito);
+            normaLegalDelitoNuevo.setNormaLegal(normaLegal);
+            normaLegalDelitoNuevo.setTipoMovimiento(tipoMovimientoNuevo);
+            normaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
+            normaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
+            normaLegalDelitoNuevo.setFecha(LocalDate.now());
+            normaLegalDelitoNuevo.setFlag("I");
+            normaLegalDelitoNuevo.setUsuario(usuario);
+            relacionNormaDelitoRepository.save(normaLegalDelitoNuevo);
+        }
+    }
+    //endregion
+
+
+
 
 //    @Override
 //    public ResultadoDTO validarNormaLegal(NormaLegalRequest normaLegalRequest, String codigoUsuario) {
