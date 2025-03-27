@@ -1,0 +1,1261 @@
+	@Override
+	public ResultadoDTO validarNormaLegalDesfasa(NormaLegalRequest normaLegalRequest, String codigoUsuario) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.FORMAT_TIME_DDMMYYY);
+        ResultadoDTO resultadoDTO = new ResultadoDTO();
+        Long idnormaLegalDelito = relacionNormaDelitoRepository.MaxId();
+        MovNormaLegal normaLegal = normaLegalRepository.findById(normaLegalRequest.getDecretoId()).orElseThrow(() -> new RuntimeException(Constant.TEXTO_NORMA_NO_ENCONTRADA));
+        Long MaxIdDelito = articuloRepository.MaxDelitos();
+        MovNormaLegalDelito normaLegalDelito = new MovNormaLegalDelito();
+        Usuario usuario = usuarioRepository.buscarUsuarioxCodigo(codigoUsuario);
+
+        if (idnormaLegalDelito == null) {
+            idnormaLegalDelito = 1L;
+        }
+
+        if (normaLegalRequest.getAccion() == 3) {//Acción: Incorporar validador
+            MaeEstadoDelito estadoDelitoAprobado = maeEstadoDelitoRepository.findById(Constant.APROBAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.INCORPORAR).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+
+            if (normaLegalRequest.getDelitoId() != null) {
+                /*Actualiza el estado*/
+                MaeEstadoDelitosDet estadoDelitoEliminado = maeEstadoDelitoDetRepository.findById(Constant.ELIMINAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                MovDelito movDelito = articuloRepository.findById(normaLegalRequest.getDelitoId()).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                /*Actualiza el estado del delito*/
+                movDelito.setFecha(LocalDate.now());
+                movDelito.setMaeEstadoDelito(estadoDelitoAprobado);
+                movDelito.setSumilla(normaLegalRequest.getDelito().getCabArticulo().getSumilla());
+                movDelito.setFlag("U");
+                articuloRepository.save(movDelito);
+
+                for (MovDelitosDet delitos : movDelitosDets) {
+                    delitos.setEstadoDelitoDetalle(0);
+                    delitos.setEstado(Constant.ESTADO_INACTIVO);
+                    delitos.setVigente(Constant.ESTADO_INACTIVO);
+                    delitos.setFecha(LocalDate.now());
+                    delitos.setEstadoDelitosDet(estadoDelitoEliminado);
+                    delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+                    movDelitosDetRepository.save(delitos);
+                }
+
+                List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
+
+                Long MaxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleParrafo = maeTipoDelitoDetalleRepository.findById(Constant.PARRAFO).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleNumeral = maeTipoDelitoDetalleRepository.findById(Constant.NUMERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleLiteral = maeTipoDelitoDetalleRepository.findById(Constant.LITERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeEstadoDelitosDet maeEstadoDelitosDetRegistrado = maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO).orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado"));
+                List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
+                List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
+                List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
+                for (int i = 0; i < movDelitoDTODet.size(); i++) {
+                    if (movDelitoDTODet.get(i).getNivel() == 1) {
+                        MovDelitosDet movDelitosDetParrafo = new MovDelitosDet();
+                        movDelitosDetParrafo.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetParrafo.setDelito(movDelito);
+                        movDelitosDetParrafo.setTipoDelitoDetalle(maeTipoDelitoDetalleParrafo);
+                        movDelitosDetParrafo.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + "." + movDelitoDTODet.get(i).getNumeracion() + ".0.0");
+                        movDelitosDetParrafo.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetParrafo.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetParrafo.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetParrafo.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetParrafo.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetParrafo.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setVersion(1);
+                        movDelitosDetParrafo.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetParrafo.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetParrafo.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetParrafo.setFecha(LocalDate.now());
+                        movDelitosDetParrafo.setFlag("I");
+                        movDelitosDetParrafo.setUid("tud");
+                        movDelitosDetParrafo.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetParrafo.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetParrafo.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetParrafo);
+                        listDelitosParrafo.add(movDelitosDetParrafo);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 2) {
+                        MovDelitosDet movDelitosDetNumeral = new MovDelitosDet();
+                        movDelitosDetNumeral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetNumeral.setDelito(movDelito);
+                        movDelitosDetNumeral.setTipoDelitoDetalle(maeTipoDelitoDetalleNumeral);
+                        movDelitosDetNumeral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetNumeral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetNumeral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetNumeral.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetNumeral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetNumeral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetNumeral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setVersion(1);
+                        movDelitosDetNumeral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetNumeral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetNumeral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetNumeral.setFecha(LocalDate.now());
+                        movDelitosDetNumeral.setFlag("I");
+                        movDelitosDetNumeral.setUid("tud");
+                        movDelitosDetNumeral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetNumeral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetNumeral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetNumeral);
+                        listDelitosNumeral.add(movDelitosDetNumeral);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 3) {
+                        MovDelitosDet movDelitosDetLiteral = new MovDelitosDet();
+                        movDelitosDetLiteral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetLiteral.setDelito(movDelito);
+                        movDelitosDetLiteral.setTipoDelitoDetalle(maeTipoDelitoDetalleLiteral);
+                        movDelitosDetLiteral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetLiteral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetLiteral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetLiteral.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetLiteral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetLiteral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetLiteral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setVersion(1);
+                        movDelitosDetLiteral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetLiteral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetLiteral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetLiteral.setFecha(LocalDate.now());
+                        movDelitosDetLiteral.setFlag("I");
+                        movDelitosDetLiteral.setUid("tud");
+                        movDelitosDetLiteral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetLiteral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetLiteral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetLiteral);
+                        listDelitosLiteral.add(movDelitosDetLiteral);
+                        MaxIdDelitoDet++;
+                    }
+                }
+
+                if (!listDelitosParrafo.isEmpty() && !listDelitosNumeral.isEmpty()) {
+                    for (int i = 0; i < listDelitosParrafo.size(); i++) {
+                        for (int j = 0; j < listDelitosNumeral.size(); j++) {
+                            if (Objects.equals(listDelitosNumeral.get(j).getDelitosAncestro(),
+                                    listDelitosParrafo.get(i).getCodigoTud())) {
+                                listDelitosNumeral.get(j).setDelitosDetPadre(listDelitosParrafo.get(i).getMovDelitosDetId());
+                                listDelitosNumeral.get(j).setCodigo(listDelitosNumeral.get(j).getCodigo() +
+                                        listDelitosParrafo.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosNumeral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosNumeral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                if (!listDelitosNumeral.isEmpty() && !listDelitosLiteral.isEmpty()) {
+                    for (int i = 0; i < listDelitosNumeral.size(); i++) {
+                        for (int j = 0; j < listDelitosLiteral.size(); j++) {
+                            if (Objects.equals(listDelitosLiteral.get(j).getDelitosAncestro(),
+                                    listDelitosNumeral.get(i).getCodigoTud())) {
+                                listDelitosLiteral.get(j).setDelitosDetPadre(listDelitosNumeral.get(i).getMovDelitosDetId());
+                                listDelitosLiteral.get(j).setCodigo(listDelitosLiteral.get(j).getCodigo() +
+                                        listDelitosNumeral.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosLiteral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosLiteral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                normaLegalDelito = normaLegalRepository.normaLegalDelito(normaLegalRequest.getDecretoId(), normaLegalRequest.getDelitoId());
+                normaLegalDelito.setFecha(LocalDate.now());
+                relacionNormaDelitoRepository.save(normaLegalDelito);
+            }
+            else {
+                MovDelito movDelito = new MovDelito();
+                CfgFuenteEstructura cfgFuenteEstructura = cfgFuenteEstructuraRepository.buscarFuenteEstructura(normaLegalRequest.getDelito().getCabArticulo().getIdFuenteNormativa(), normaLegalRequest.getDelito().getCabArticulo().getIdCapitulo());
+                movDelito.setMovDelitoId(MaxIdDelito);
+                movDelito.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
+                movDelito.setArticulo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
+                movDelito.setSumilla(normaLegalRequest.getDelito().getCabArticulo().getSumilla());
+                movDelito.setMaeEstadoDelito(estadoDelitoAprobado);
+                movDelito.setFecha(LocalDate.now());
+                movDelito.setFlag("I");
+                movDelito.setUid("tud");
+                movDelito.setCfgFuenteEstructura(cfgFuenteEstructura);
+                articuloRepository.save(movDelito);
+
+                List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
+
+                Long MaxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleParrafo = maeTipoDelitoDetalleRepository.findById(Constant.PARRAFO).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleNumeral = maeTipoDelitoDetalleRepository.findById(Constant.NUMERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleLiteral = maeTipoDelitoDetalleRepository.findById(Constant.LITERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeEstadoDelitosDet maeEstadoDelitosDetRegistrado = maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO).orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado"));
+                List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
+                List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
+                List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
+                for (int i = 0; i < movDelitoDTODet.size(); i++) {
+                    if (movDelitoDTODet.get(i).getNivel() == 1) {
+                        MovDelitosDet movDelitosDetParrafo = new MovDelitosDet();
+                        movDelitosDetParrafo.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetParrafo.setDelito(movDelito);
+                        movDelitosDetParrafo.setTipoDelitoDetalle(maeTipoDelitoDetalleParrafo);
+                        movDelitosDetParrafo.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + "." + movDelitoDTODet.get(i).getNumeracion() + ".0.0");
+                        movDelitosDetParrafo.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetParrafo.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetParrafo.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetParrafo.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetParrafo.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetParrafo.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setVersion(1);
+                        movDelitosDetParrafo.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetParrafo.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetParrafo.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetParrafo.setFecha(LocalDate.now());
+                        movDelitosDetParrafo.setFlag("I");
+                        movDelitosDetParrafo.setUid("tud");
+                        movDelitosDetParrafo.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetParrafo.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetParrafo.setEstadoDelitoDetalle(1);
+                        movDelitosDetParrafo.setOrden(movDelitoDTODet.get(i).getOrden());
+                        movDelitosDetRepository.save(movDelitosDetParrafo);
+                        listDelitosParrafo.add(movDelitosDetParrafo);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 2) {
+                        MovDelitosDet movDelitosDetNumeral = new MovDelitosDet();
+                        movDelitosDetNumeral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetNumeral.setDelito(movDelito);
+                        movDelitosDetNumeral.setTipoDelitoDetalle(maeTipoDelitoDetalleNumeral);
+                        movDelitosDetNumeral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetNumeral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetNumeral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetNumeral.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetNumeral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetNumeral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetNumeral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setVersion(1);
+                        movDelitosDetNumeral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetNumeral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetNumeral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetNumeral.setFecha(LocalDate.now());
+                        movDelitosDetNumeral.setFlag("I");
+                        movDelitosDetNumeral.setUid("tud");
+                        movDelitosDetNumeral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetNumeral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetNumeral.setEstadoDelitoDetalle(1);
+                        movDelitosDetNumeral.setOrden(movDelitoDTODet.get(i).getOrden());
+                        movDelitosDetRepository.save(movDelitosDetNumeral);
+                        listDelitosNumeral.add(movDelitosDetNumeral);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 3) {
+                        MovDelitosDet movDelitosDetLiteral = new MovDelitosDet();
+                        movDelitosDetLiteral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetLiteral.setDelito(movDelito);
+                        movDelitosDetLiteral.setTipoDelitoDetalle(maeTipoDelitoDetalleLiteral);
+                        movDelitosDetLiteral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetLiteral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetLiteral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetLiteral.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetLiteral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetLiteral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetLiteral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setVersion(1);
+                        movDelitosDetLiteral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetLiteral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetLiteral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetLiteral.setFecha(LocalDate.now());
+                        movDelitosDetLiteral.setFlag("I");
+                        movDelitosDetLiteral.setUid("tud");
+                        movDelitosDetLiteral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetLiteral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetLiteral.setEstadoDelitoDetalle(1);
+                        movDelitosDetLiteral.setOrden(movDelitoDTODet.get(i).getOrden());
+                        movDelitosDetRepository.save(movDelitosDetLiteral);
+                        listDelitosLiteral.add(movDelitosDetLiteral);
+                        MaxIdDelitoDet++;
+                    }
+                }
+
+                if (!listDelitosParrafo.isEmpty() && !listDelitosNumeral.isEmpty()) {
+                    for (int i = 0; i < listDelitosParrafo.size(); i++) {
+                        for (int j = 0; j < listDelitosNumeral.size(); j++) {
+                            if (Objects.equals(listDelitosNumeral.get(j).getDelitosAncestro(),
+                                    listDelitosParrafo.get(i).getCodigoTud())) {
+                                listDelitosNumeral.get(j).setDelitosDetPadre(listDelitosParrafo.get(i).getMovDelitosDetId());
+                                listDelitosNumeral.get(j).setCodigo(listDelitosNumeral.get(j).getCodigo() +
+                                        listDelitosParrafo.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosNumeral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosNumeral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                if (!listDelitosNumeral.isEmpty() && !listDelitosLiteral.isEmpty()) {
+                    for (int i = 0; i < listDelitosNumeral.size(); i++) {
+                        for (int j = 0; j < listDelitosLiteral.size(); j++) {
+                            if (Objects.equals(listDelitosLiteral.get(j).getDelitosAncestro(),
+                                    listDelitosNumeral.get(i).getCodigoTud())) {
+                                listDelitosLiteral.get(j).setDelitosDetPadre(listDelitosNumeral.get(i).getMovDelitosDetId());
+                                listDelitosLiteral.get(j).setCodigo(listDelitosLiteral.get(j).getCodigo() +
+                                        listDelitosNumeral.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosLiteral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosLiteral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                normaLegalDelito.setNormaLegalDelitosId(idnormaLegalDelito);
+                normaLegalDelito.setMovDelito(movDelito);
+                normaLegalDelito.setNormaLegal(normaLegal);
+                normaLegalDelito.setTipoMovimiento(tipoMovimiento);
+                normaLegalDelito.setFechaRegistro(LocalDate.now());
+                normaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+                normaLegalDelito.setFecha(LocalDate.now());
+                normaLegalDelito.setFlag("I");
+                relacionNormaDelitoRepository.save(normaLegalDelito);
+            }
+            resultadoDTO.setResultado("Los Datos se guardaron correctamente");
+        }
+        if (normaLegalRequest.getAccion() == 6) {//Acción: Derogar Total validador
+            MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.DEROGAR_TOTAL).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            normaLegalDelito = normaLegalRepository.normaLegalDelito(normaLegalRequest.getDecretoId(), normaLegalRequest.getDelitoId());
+            MovDelito movDelito = articuloRepository.findById(normaLegalRequest.getDelitoId()).orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
+            MaeEstadoDelito estadoDelitoAprobado = maeEstadoDelitoRepository.findById(Constant.APROBAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+
+            if (normaLegalDelito != null) {
+                /*Actualiza el estado del delito*/
+                movDelito.setFecha(LocalDate.parse(normaLegalRequest.getDelito().getCabArticulo().getFechaRegistro(), formatter));
+                movDelito.setMaeEstadoDelito(estadoDelitoAprobado);
+                movDelito.setFlag("U");
+                articuloRepository.save(movDelito);
+
+                /*Actualiza el estado relacion normaLegalDelito*/
+                normaLegalDelito.setFecha(LocalDate.now());
+                normaLegalDelito.setFlag("U");
+                relacionNormaDelitoRepository.save(normaLegalDelito);
+
+                /*Actualiza el estado del detalle Actual*/
+                List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                for (MovDelitosDet delitos : movDelitosDets) {
+                    delitos.setFecha(LocalDate.now());
+                    delitos.setFechaFinVigencia(normaLegalRequest.getDelito().getCabArticulo().getFechaRegistro());
+                    movDelitosDetRepository.save(delitos);
+                }
+
+            }
+            else {
+                /*Actualiza el estado del detalle Actual*/
+                MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
+                for (MovDelitosDet delitos : movDelitosDets) {
+                    delitos.setEstadoDelitoDetalle(0);
+                    delitos.setEstado(Constant.ESTADO_INACTIVO);
+                    delitos.setVigente(Constant.ESTADO_INACTIVO);
+                    delitos.setFecha(LocalDate.now());
+                    delitos.setEstadoDelitosDet(estadoDelitoArchivado);
+                    delitos.setFechaFinVigencia(normaLegalRequest.getDelito().getCabArticulo().getFechaRegistro());
+                    movDelitosDetRepository.save(delitos);
+                }
+
+                nuevoNormaLegalDelito.setNormaLegalDelitosId(idnormaLegalDelito);
+                nuevoNormaLegalDelito.setMovDelito(movDelito);
+                nuevoNormaLegalDelito.setNormaLegal(normaLegal);
+                nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
+                nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
+                nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+                nuevoNormaLegalDelito.setFecha(LocalDate.now());
+                nuevoNormaLegalDelito.setFlag("I");
+                relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
+            }
+            resultadoDTO.setResultado("Los Datos se guardaron correctamente");
+        }
+        if (normaLegalRequest.getAccion() == 4) {//Acción: Reubicar validador
+            MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.REUBICAR).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            MaeTipoMovimiento tipoMovimientoNuevo = maeTipoMovimientoRepository.findById(Constant.NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            normaLegalDelito = normaLegalRepository.normaLegalDelito(normaLegalRequest.getDecretoId(), normaLegalRequest.getDelitoId());
+            MovDelito movDelito = articuloRepository.findById(normaLegalRequest.getDelitoId()).orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
+
+            if (normaLegalDelito != null) {
+                /*Actualiza el estado relacion normaLegalDelito*/
+                normaLegalDelito.setEstado(Constant.ESTADO_INACTIVO);
+                normaLegalDelito.setFecha(LocalDate.now());
+                normaLegalDelito.setFlag("U");
+                relacionNormaDelitoRepository.save(normaLegalDelito);
+
+                /*Actualiza el estado de la referencia normaLegalDelito*/
+                MovNormaLegalDelito normaLegalDelitoReferencia = normaLegalRepository.normaLegalDelitoReferencia(normaLegalRequest.getDecretoId(), normaLegalRequest.getDelitoId());
+                normaLegalDelitoReferencia.setEstado(Constant.ESTADO_INACTIVO);
+                normaLegalDelitoReferencia.setFecha(LocalDate.now());
+                normaLegalDelitoReferencia.setFlag("U");
+                normaLegalDelitoReferencia.setUsuario(usuario);
+                relacionNormaDelitoRepository.save(normaLegalDelitoReferencia);
+
+                /*Inserta Relacion de Delito Actual*/
+                MovNormaLegalDelito normaLegalDelito1 = new MovNormaLegalDelito();
+                normaLegalDelito1.setNormaLegalDelitosId(idnormaLegalDelito);
+                normaLegalDelito1.setMovDelito(movDelito);
+                normaLegalDelito1.setNormaLegal(normaLegal);
+                normaLegalDelito1.setTipoMovimiento(tipoMovimiento);
+                normaLegalDelito1.setFechaRegistro(LocalDate.now());
+                normaLegalDelito1.setEstado(Constant.ESTADO_ACTIVO);
+                normaLegalDelito1.setFecha(LocalDate.now());
+                normaLegalDelito1.setFlag("I");
+                relacionNormaDelitoRepository.save(normaLegalDelito1);
+                idnormaLegalDelito++;
+
+                /*Inserta Cabecera de Delito Nuevo*/
+                MovDelito movDelitoNuevo = new MovDelito();
+                MaeEstadoDelito estadoDelitoAprobado = maeEstadoDelitoRepository.findById(Constant.APROBAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                CfgFuenteEstructura cfgFuenteEstructura = cfgFuenteEstructuraRepository.buscarFuenteEstructura(normaLegalRequest.getDelito().getCabArticulo().getIdFuenteNormativa(), normaLegalRequest.getDelito().getCabArticulo().getIdCapitulo());
+                movDelitoNuevo.setMovDelitoId(MaxIdDelito);
+                movDelitoNuevo.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
+                movDelitoNuevo.setArticulo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
+                movDelitoNuevo.setSumilla(normaLegalRequest.getDelito().getCabArticulo().getSumilla());
+                movDelitoNuevo.setMaeEstadoDelito(estadoDelitoAprobado);
+                movDelitoNuevo.setFecha(LocalDate.now());
+                movDelitoNuevo.setFlag("I");
+                movDelitoNuevo.setUid("tud");
+                movDelitoNuevo.setCfgFuenteEstructura(cfgFuenteEstructura);
+                articuloRepository.save(movDelitoNuevo);
+
+                /*Inserta Detalle de Delito Nuevo*/
+                List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                Long MaxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+                for (MovDelitosDet movDelitosDet : movDelitosDets) {
+                    MovDelitosDet movDelitosDetNuevo = new MovDelitosDet();
+                    movDelitosDetNuevo.setMovDelitosDetId(MaxIdDelitoDet);
+                    movDelitosDetNuevo.setDelito(movDelitoNuevo);
+                    movDelitosDetNuevo.setTipoDelitoDetalle(movDelitosDet.getTipoDelitoDetalle());
+                    movDelitosDetNuevo.setCodigo(movDelitosDet.getCodigo());
+                    movDelitosDetNuevo.setPenaMin(movDelitosDet.getPenaMin());
+                    movDelitosDetNuevo.setPenaMax(movDelitosDet.getPenaMax());
+                    movDelitosDetNuevo.setFechaIniVigencia(movDelitosDet.getFechaIniVigencia());
+                    movDelitosDetNuevo.setFechaFinVigencia(movDelitosDet.getFechaFinVigencia());
+                    movDelitosDetNuevo.setModificado(movDelitosDet.getModificado());
+                    movDelitosDetNuevo.setEstado(movDelitosDet.getEstado());
+                    movDelitosDetNuevo.setVersion(movDelitosDet.getVersion() + 1);
+                    movDelitosDetNuevo.setVigente(movDelitosDet.getVigente());
+                    movDelitosDetNuevo.setEstadoDelitoDetalle(movDelitosDet.getEstadoDelitoDetalle());
+                    movDelitosDetNuevo.setCodigoDelito(movDelitosDet.getCodigoDelito());
+                    movDelitosDetNuevo.setDescripcionDelito(movDelitosDet.getDescripcionDelito());
+                    movDelitosDetNuevo.setDelitosDetPadre(movDelitosDet.getDelitosDetPadre());
+                    movDelitosDetNuevo.setCodigoTud(movDelitosDet.getCodigoTud());
+                    movDelitosDetNuevo.setEstadoDelitosDet(movDelitosDet.getEstadoDelitosDet());
+                    movDelitosDetNuevo.setFecha(LocalDate.now());
+                    movDelitosDetNuevo.setFlag("I");
+                    movDelitosDetRepository.save(movDelitosDetNuevo);
+                    MaxIdDelitoDet++;
+                }
+
+                /*Inserta Relacion de Delito Nuevo*/
+                MovNormaLegalDelito normaLegalDelito2 = new MovNormaLegalDelito();
+                normaLegalDelito2.setNormaLegalDelitosId(idnormaLegalDelito);
+                normaLegalDelito2.setMovDelito(movDelitoNuevo);
+                normaLegalDelito2.setNormaLegal(normaLegal);
+                normaLegalDelito2.setTipoMovimiento(tipoMovimientoNuevo);
+                normaLegalDelito2.setFechaRegistro(LocalDate.now());
+                normaLegalDelito2.setEstado(Constant.ESTADO_ACTIVO);
+                normaLegalDelito2.setFecha(LocalDate.now());
+                normaLegalDelito2.setFlag("I");
+                normaLegalDelito2.setIdMovDelitosReferencia(normaLegalRequest.getDelitoId());
+                relacionNormaDelitoRepository.save(normaLegalDelito2);
+                idnormaLegalDelito++;
+
+                /*Actualiza el estado de la cabecera del Delito*/
+                //MaeEstadoDelito estadoDelitoArchivo = maeEstadoDelitoRepository.findById(Constant.ARCHIVADO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                movDelito.setMaeEstadoDelito(estadoDelitoAprobado);
+                movDelito.setFecha(LocalDate.now());
+                movDelito.setFlag("U");
+                articuloRepository.save(movDelito);
+
+                /*Actualiza el estado del detalle Actual*/
+                List<MovDelitosDet> movDelitosDetsActual = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                for (MovDelitosDet delitos : movDelitosDetsActual) {
+                    delitos.setEstadoDelitoDetalle(0);
+                    delitos.setEstado(Constant.ESTADO_INACTIVO);
+                    delitos.setVigente(Constant.ESTADO_INACTIVO);
+                    delitos.setFecha(LocalDate.now());
+                    delitos.setEstadoDelitosDet(estadoDelitoArchivado);
+                    delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+                    movDelitosDetRepository.save(delitos);
+                }
+            }
+            else {
+                /*Inserta Relacion de Delito Actual*/
+                MovNormaLegalDelito normaLegalDelitoActual = new MovNormaLegalDelito();
+                normaLegalDelitoActual.setNormaLegalDelitosId(idnormaLegalDelito);
+                normaLegalDelitoActual.setMovDelito(movDelito);
+                normaLegalDelitoActual.setNormaLegal(normaLegal);
+                normaLegalDelitoActual.setTipoMovimiento(tipoMovimiento);
+                normaLegalDelitoActual.setFechaRegistro(LocalDate.now());
+                normaLegalDelitoActual.setEstado(Constant.ESTADO_ACTIVO);
+                normaLegalDelitoActual.setFecha(LocalDate.now());
+                normaLegalDelitoActual.setFlag("I");
+                relacionNormaDelitoRepository.save(normaLegalDelitoActual);
+                idnormaLegalDelito++;
+
+                /*Inserta Cabecera de Delito Nuevo*/
+                MovDelito movDelitoNuevo = new MovDelito();
+                MaeEstadoDelito estadoDelitoAprobado = maeEstadoDelitoRepository.findById(Constant.APROBAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                CfgFuenteEstructura cfgFuenteEstructura = cfgFuenteEstructuraRepository.buscarFuenteEstructura(normaLegalRequest.getDelito().getCabArticulo().getIdFuenteNormativa(), normaLegalRequest.getDelito().getCabArticulo().getIdCapitulo());
+                movDelitoNuevo.setMovDelitoId(MaxIdDelito);
+                movDelitoNuevo.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
+                movDelitoNuevo.setArticulo(normaLegalRequest.getDelito().getCabArticulo().getArticulo());
+                movDelitoNuevo.setSumilla(normaLegalRequest.getDelito().getCabArticulo().getSumilla());
+                movDelitoNuevo.setMaeEstadoDelito(estadoDelitoAprobado);
+                movDelitoNuevo.setFecha(LocalDate.now());
+                movDelitoNuevo.setFlag("I");
+                movDelitoNuevo.setUid("tud");
+                movDelitoNuevo.setCfgFuenteEstructura(cfgFuenteEstructura);
+                articuloRepository.save(movDelitoNuevo);
+
+                /*Inserta Detalle de Delito Nuevo*/
+                List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                Long MaxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+                for (MovDelitosDet movDelitosDet : movDelitosDets) {
+                    MovDelitosDet movDelitosDetNuevo = new MovDelitosDet();
+                    movDelitosDetNuevo.setMovDelitosDetId(MaxIdDelitoDet);
+                    movDelitosDetNuevo.setDelito(movDelitoNuevo);
+                    movDelitosDetNuevo.setTipoDelitoDetalle(movDelitosDet.getTipoDelitoDetalle());
+                    movDelitosDetNuevo.setCodigo(movDelitosDet.getCodigo());
+                    movDelitosDetNuevo.setPenaMin(movDelitosDet.getPenaMin());
+                    movDelitosDetNuevo.setPenaMax(movDelitosDet.getPenaMax());
+                    movDelitosDetNuevo.setFechaIniVigencia(movDelitosDet.getFechaIniVigencia());
+                    movDelitosDetNuevo.setFechaFinVigencia(movDelitosDet.getFechaFinVigencia());
+                    movDelitosDetNuevo.setModificado(movDelitosDet.getModificado());
+                    movDelitosDetNuevo.setEstado(movDelitosDet.getEstado());
+                    movDelitosDetNuevo.setVersion(movDelitosDet.getVersion() + 1);
+                    movDelitosDetNuevo.setVigente(movDelitosDet.getVigente());
+                    movDelitosDetNuevo.setEstadoDelitoDetalle(movDelitosDet.getEstadoDelitoDetalle());
+                    movDelitosDetNuevo.setCodigoDelito(movDelitosDet.getCodigoDelito());
+                    movDelitosDetNuevo.setDescripcionDelito(movDelitosDet.getDescripcionDelito());
+                    movDelitosDetNuevo.setDelitosDetPadre(movDelitosDet.getDelitosDetPadre());
+                    movDelitosDetNuevo.setCodigoTud(movDelitosDet.getCodigoTud());
+                    movDelitosDetNuevo.setEstadoDelitosDet(movDelitosDet.getEstadoDelitosDet());
+                    movDelitosDetNuevo.setFecha(LocalDate.now());
+                    movDelitosDetNuevo.setFlag("I");
+                    movDelitosDetRepository.save(movDelitosDetNuevo);
+                    MaxIdDelitoDet++;
+                }
+
+                /*Inserta Relacion de Delito Nuevo*/
+                MovNormaLegalDelito normaLegalDelitoNuevo = new MovNormaLegalDelito();
+                normaLegalDelitoNuevo.setNormaLegalDelitosId(idnormaLegalDelito);
+                normaLegalDelitoNuevo.setMovDelito(movDelitoNuevo);
+                normaLegalDelitoNuevo.setNormaLegal(normaLegal);
+                normaLegalDelitoNuevo.setTipoMovimiento(tipoMovimientoNuevo);
+                normaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
+                normaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
+                normaLegalDelitoNuevo.setFecha(LocalDate.now());
+                normaLegalDelitoNuevo.setFlag("I");
+                normaLegalDelitoNuevo.setIdMovDelitosReferencia(normaLegalRequest.getDelitoId());
+                normaLegalDelitoNuevo.setUsuario(usuario);
+                relacionNormaDelitoRepository.save(normaLegalDelitoNuevo);
+                idnormaLegalDelito++;
+
+                /*Actualiza el estado de la cabecera del Delito*/
+                //MaeEstadoDelito estadoDelitoArchivo = maeEstadoDelitoRepository.findById(Constant.ARCHIVADO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                movDelito.setMaeEstadoDelito(estadoDelitoAprobado);
+                movDelito.setFecha(LocalDate.now());
+                movDelito.setFlag("U");
+                articuloRepository.save(movDelito);
+
+                /*Actualiza el estado del detalle Actual*/
+                List<MovDelitosDet> movDelitosDetsActual = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                for (MovDelitosDet delitos : movDelitosDetsActual) {
+                    delitos.setEstadoDelitoDetalle(0);
+                    delitos.setEstado(Constant.ESTADO_INACTIVO);
+                    delitos.setVigente(Constant.ESTADO_INACTIVO);
+                    delitos.setFecha(LocalDate.now());
+                    delitos.setEstadoDelitosDet(estadoDelitoArchivado);
+                    delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+                    movDelitosDetRepository.save(delitos);
+                }
+            }
+            resultadoDTO.setResultado("Los Datos se guardaron correctamente");
+        }
+        if (normaLegalRequest.getAccion() == 2) {//Acción: Modificar validador
+            MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.MODIFICAR).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            normaLegalDelito = normaLegalRepository.normaLegalDelito(normaLegalRequest.getDecretoId(), normaLegalRequest.getDelitoId());
+            MovDelito movDelito = articuloRepository.findById(normaLegalRequest.getDelitoId()).orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
+            MaeEstadoDelito estadoDelitoAprobado = maeEstadoDelitoRepository.findById(Constant.APROBAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+
+            if (normaLegalDelito != null) {
+                /*Actualiza el estado del delito*/
+                movDelito.setFecha(LocalDate.now());
+                movDelito.setMaeEstadoDelito(estadoDelitoAprobado);
+                movDelito.setFlag("U");
+                movDelito.setSumilla(normaLegalRequest.getDelito().getCabArticulo().getSumilla());
+                articuloRepository.save(movDelito);
+
+                /*Actualiza el estado relacion normaLegalDelito*/
+                normaLegalDelito.setEstado(Constant.ESTADO_INACTIVO);
+                normaLegalDelito.setFecha(LocalDate.now());
+                normaLegalDelito.setFlag("U");
+                normaLegalDelito.setUsuario(usuario);
+                relacionNormaDelitoRepository.save(normaLegalDelito);
+
+                /*Actualiza el estado del detalle Actual*/
+                MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                for (MovDelitosDet delitos : movDelitosDets) {
+                    delitos.setEstadoDelitoDetalle(0);
+                    delitos.setEstado(Constant.ESTADO_INACTIVO);
+                    delitos.setVigente(Constant.ESTADO_INACTIVO);
+                    delitos.setFecha(LocalDate.now());
+                    delitos.setEstadoDelitosDet(estadoDelitoArchivado);
+                    delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+                    movDelitosDetRepository.save(delitos);
+                }
+
+                MovNormaLegalDelito normaLegalDelitoNuevo = new MovNormaLegalDelito();
+                List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
+
+                Long MaxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleParrafo = maeTipoDelitoDetalleRepository.findById(Constant.PARRAFO).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleNumeral = maeTipoDelitoDetalleRepository.findById(Constant.NUMERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleLiteral = maeTipoDelitoDetalleRepository.findById(Constant.LITERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeEstadoDelitosDet maeEstadoDelitosDetRegistrado = maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO).orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado"));
+                List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
+                List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
+                List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
+                for (int i = 0; i < movDelitoDTODet.size(); i++) {
+                    if (movDelitoDTODet.get(i).getNivel() == 1) {
+                        MovDelitosDet movDelitosDetParrafo = new MovDelitosDet();
+                        movDelitosDetParrafo.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetParrafo.setDelito(movDelito);
+                        movDelitosDetParrafo.setTipoDelitoDetalle(maeTipoDelitoDetalleParrafo);
+                        movDelitosDetParrafo.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + "." + movDelitoDTODet.get(i).getNumeracion() + ".0.0");
+                        movDelitosDetParrafo.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetParrafo.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetParrafo.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetParrafo.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetParrafo.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetParrafo.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setVersion(1);
+                        movDelitosDetParrafo.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetParrafo.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetParrafo.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetParrafo.setFecha(LocalDate.now());
+                        movDelitosDetParrafo.setFlag("I");
+                        movDelitosDetParrafo.setUid("tud");
+                        movDelitosDetParrafo.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetParrafo.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetParrafo.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetParrafo);
+                        listDelitosParrafo.add(movDelitosDetParrafo);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 2) {
+                        MovDelitosDet movDelitosDetNumeral = new MovDelitosDet();
+                        movDelitosDetNumeral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetNumeral.setDelito(movDelito);
+                        movDelitosDetNumeral.setTipoDelitoDetalle(maeTipoDelitoDetalleNumeral);
+                        movDelitosDetNumeral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetNumeral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetNumeral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetNumeral.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetNumeral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetNumeral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetNumeral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setVersion(1);
+                        movDelitosDetNumeral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetNumeral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetNumeral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetNumeral.setFecha(LocalDate.now());
+                        movDelitosDetNumeral.setFlag("I");
+                        movDelitosDetNumeral.setUid("tud");
+                        movDelitosDetNumeral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetNumeral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetNumeral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetNumeral);
+                        listDelitosNumeral.add(movDelitosDetNumeral);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 3) {
+                        MovDelitosDet movDelitosDetLiteral = new MovDelitosDet();
+                        movDelitosDetLiteral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetLiteral.setDelito(movDelito);
+                        movDelitosDetLiteral.setTipoDelitoDetalle(maeTipoDelitoDetalleLiteral);
+                        movDelitosDetLiteral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetLiteral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetLiteral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetLiteral.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetLiteral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetLiteral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetLiteral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setVersion(1);
+                        movDelitosDetLiteral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetLiteral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetLiteral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetLiteral.setFecha(LocalDate.now());
+                        movDelitosDetLiteral.setFlag("I");
+                        movDelitosDetLiteral.setUid("tud");
+                        movDelitosDetLiteral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetLiteral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetLiteral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetLiteral);
+                        listDelitosLiteral.add(movDelitosDetLiteral);
+                        MaxIdDelitoDet++;
+                    }
+                }
+
+                if (!listDelitosParrafo.isEmpty() && !listDelitosNumeral.isEmpty()) {
+                    for (int i = 0; i < listDelitosParrafo.size(); i++) {
+                        for (int j = 0; j < listDelitosNumeral.size(); j++) {
+                            if (Objects.equals(listDelitosNumeral.get(j).getDelitosAncestro(),
+                                    listDelitosParrafo.get(i).getCodigoTud())) {
+                                listDelitosNumeral.get(j).setDelitosDetPadre(listDelitosParrafo.get(i).getMovDelitosDetId());
+                                listDelitosNumeral.get(j).setCodigo(listDelitosNumeral.get(j).getCodigo() +
+                                        listDelitosParrafo.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosNumeral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosNumeral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                if (!listDelitosNumeral.isEmpty() && !listDelitosLiteral.isEmpty()) {
+                    for (int i = 0; i < listDelitosNumeral.size(); i++) {
+                        for (int j = 0; j < listDelitosLiteral.size(); j++) {
+                            if (Objects.equals(listDelitosLiteral.get(j).getDelitosAncestro(),
+                                    listDelitosNumeral.get(i).getCodigoTud())) {
+                                listDelitosLiteral.get(j).setDelitosDetPadre(listDelitosNumeral.get(i).getMovDelitosDetId());
+                                listDelitosLiteral.get(j).setCodigo(listDelitosLiteral.get(j).getCodigo() +
+                                        listDelitosNumeral.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosLiteral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosLiteral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                normaLegalDelitoNuevo.setNormaLegalDelitosId(idnormaLegalDelito);
+                normaLegalDelitoNuevo.setMovDelito(movDelito);
+                normaLegalDelitoNuevo.setNormaLegal(normaLegal);
+                normaLegalDelitoNuevo.setTipoMovimiento(tipoMovimiento);
+                normaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
+                normaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
+                normaLegalDelitoNuevo.setFecha(LocalDate.now());
+                normaLegalDelitoNuevo.setUsuario(usuario);
+                normaLegalDelitoNuevo.setFlag("I");
+                relacionNormaDelitoRepository.save(normaLegalDelitoNuevo);
+            }
+            else {
+
+
+
+                /*Actualiza los datos de Delito*/
+                movDelito.setSumilla(normaLegalRequest.getDelito().getCabArticulo().getSumilla());
+                movDelito.setFecha(LocalDate.now());
+                movDelito.setFlag("U");
+                articuloRepository.save(movDelito);
+
+
+                /*Actualiza el estado del detalle Actual*/
+                MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                MovNormaLegalDelito nuevoNormaLegalDelito = new MovNormaLegalDelito();
+                for (MovDelitosDet delitos : movDelitosDets) {
+                    delitos.setEstadoDelitoDetalle(0);
+                    delitos.setEstado(Constant.ESTADO_INACTIVO);
+                    delitos.setVigente(Constant.ESTADO_INACTIVO);
+                    delitos.setFecha(LocalDate.now());
+                    delitos.setEstadoDelitosDet(estadoDelitoArchivado);
+                    delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+                    movDelitosDetRepository.save(delitos);
+                }
+
+                List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
+
+                Long MaxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleParrafo = maeTipoDelitoDetalleRepository.findById(Constant.PARRAFO).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleNumeral = maeTipoDelitoDetalleRepository.findById(Constant.NUMERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleLiteral = maeTipoDelitoDetalleRepository.findById(Constant.LITERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeEstadoDelitosDet maeEstadoDelitosDetRegistrado = maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO).orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado"));
+                List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
+                List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
+                List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
+                for (int i = 0; i < movDelitoDTODet.size(); i++) {
+                    if (movDelitoDTODet.get(i).getNivel() == 1) {
+                        MovDelitosDet movDelitosDetParrafo = new MovDelitosDet();
+                        movDelitosDetParrafo.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetParrafo.setDelito(movDelito);
+                        movDelitosDetParrafo.setTipoDelitoDetalle(maeTipoDelitoDetalleParrafo);
+                        movDelitosDetParrafo.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + "." + movDelitoDTODet.get(i).getNumeracion() + ".0.0");
+                        movDelitosDetParrafo.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetParrafo.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetParrafo.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetParrafo.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetParrafo.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetParrafo.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setVersion(1);
+                        movDelitosDetParrafo.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetParrafo.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetParrafo.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetParrafo.setFecha(LocalDate.now());
+                        movDelitosDetParrafo.setFlag("I");
+                        movDelitosDetParrafo.setUid("tud");
+                        movDelitosDetParrafo.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetParrafo.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetParrafo.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetParrafo);
+                        listDelitosParrafo.add(movDelitosDetParrafo);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 2) {
+                        MovDelitosDet movDelitosDetNumeral = new MovDelitosDet();
+                        movDelitosDetNumeral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetNumeral.setDelito(movDelito);
+                        movDelitosDetNumeral.setTipoDelitoDetalle(maeTipoDelitoDetalleNumeral);
+                        movDelitosDetNumeral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetNumeral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetNumeral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetNumeral.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetNumeral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetNumeral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetNumeral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setVersion(1);
+                        movDelitosDetNumeral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetNumeral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetNumeral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetNumeral.setFecha(LocalDate.now());
+                        movDelitosDetNumeral.setFlag("I");
+                        movDelitosDetNumeral.setUid("tud");
+                        movDelitosDetNumeral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetNumeral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetNumeral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetNumeral);
+                        listDelitosNumeral.add(movDelitosDetNumeral);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 3) {
+                        MovDelitosDet movDelitosDetLiteral = new MovDelitosDet();
+                        movDelitosDetLiteral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetLiteral.setDelito(movDelito);
+                        movDelitosDetLiteral.setTipoDelitoDetalle(maeTipoDelitoDetalleLiteral);
+                        movDelitosDetLiteral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetLiteral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetLiteral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetLiteral.setFechaIniVigencia(movDelitoDTODet.get(i).getFechaInicioVigencia());
+                        movDelitosDetLiteral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetLiteral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetLiteral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setVersion(1);
+                        movDelitosDetLiteral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetLiteral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetLiteral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetLiteral.setFecha(LocalDate.now());
+                        movDelitosDetLiteral.setFlag("I");
+                        movDelitosDetLiteral.setUid("tud");
+                        movDelitosDetLiteral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetLiteral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetLiteral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetLiteral);
+                        listDelitosLiteral.add(movDelitosDetLiteral);
+                        MaxIdDelitoDet++;
+                    }
+                }
+
+                if (!listDelitosParrafo.isEmpty() && !listDelitosNumeral.isEmpty()) {
+                    for (int i = 0; i < listDelitosParrafo.size(); i++) {
+                        for (int j = 0; j < listDelitosNumeral.size(); j++) {
+                            if (Objects.equals(listDelitosNumeral.get(j).getDelitosAncestro(),
+                                    listDelitosParrafo.get(i).getCodigoTud())) {
+                                listDelitosNumeral.get(j).setDelitosDetPadre(listDelitosParrafo.get(i).getMovDelitosDetId());
+                                listDelitosNumeral.get(j).setCodigo(listDelitosNumeral.get(j).getCodigo() +
+                                        listDelitosParrafo.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosNumeral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosNumeral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                if (!listDelitosNumeral.isEmpty() && !listDelitosLiteral.isEmpty()) {
+                    for (int i = 0; i < listDelitosNumeral.size(); i++) {
+                        for (int j = 0; j < listDelitosLiteral.size(); j++) {
+                            if (Objects.equals(listDelitosLiteral.get(j).getDelitosAncestro(),
+                                    listDelitosNumeral.get(i).getCodigoTud())) {
+                                listDelitosLiteral.get(j).setDelitosDetPadre(listDelitosNumeral.get(i).getMovDelitosDetId());
+                                listDelitosLiteral.get(j).setCodigo(listDelitosLiteral.get(j).getCodigo() +
+                                        listDelitosNumeral.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosLiteral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosLiteral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                nuevoNormaLegalDelito.setNormaLegalDelitosId(idnormaLegalDelito);
+                nuevoNormaLegalDelito.setMovDelito(movDelito);
+                nuevoNormaLegalDelito.setNormaLegal(normaLegal);
+                nuevoNormaLegalDelito.setTipoMovimiento(tipoMovimiento);
+                nuevoNormaLegalDelito.setFechaRegistro(LocalDate.now());
+                nuevoNormaLegalDelito.setEstado(Constant.ESTADO_ACTIVO);
+                nuevoNormaLegalDelito.setFecha(LocalDate.now());
+                nuevoNormaLegalDelito.setFlag("I");
+                nuevoNormaLegalDelito.setUsuario(usuario);
+                relacionNormaDelitoRepository.save(nuevoNormaLegalDelito);
+            }
+            resultadoDTO.setResultado("Los Datos se guardaron correctamente");
+        }
+        if (normaLegalRequest.getAccion() == 7) {//Acción: Derogar Parcial validador
+            MaeTipoMovimiento tipoMovimiento = maeTipoMovimientoRepository.findById(Constant.DEROGAR_PARCIAL).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            MaeTipoMovimiento tipoMovimientoNuevo = maeTipoMovimientoRepository.findById(Constant.NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+            List<MovNormaLegalDelito> normaLegalDelitoList = normaLegalRepository.normaLegalDelitos(normaLegalRequest.getDecretoId(), normaLegalRequest.getDelitoId());
+            MovDelito movDelito = articuloRepository.findById(normaLegalRequest.getDelitoId()).orElseThrow(() -> new RuntimeException(Constant.TEXTO_DELITO_NO_ENCONTRADO));
+            MaeEstadoDelito estadoDelitoAprobado = maeEstadoDelitoRepository.findById(Constant.APROBAR_NUEVO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+
+            if (normaLegalDelitoList.size() > 0) {
+                /*Actualiza el estado del delito*/
+                movDelito.setFecha(LocalDate.now());
+                movDelito.setMaeEstadoDelito(estadoDelitoAprobado);
+                movDelito.setFlag("U");
+                articuloRepository.save(movDelito);
+
+                /*Actualiza el estado de normaLegalDelito*/
+                for (int i = 0; i < normaLegalDelitoList.size(); i++) {
+                    normaLegalDelitoList.get(i).setFecha(LocalDate.now());
+                    normaLegalDelitoList.get(i).setFlag("U");
+                    normaLegalDelitoList.get(i).setEstado(Constant.ESTADO_INACTIVO);
+                    relacionNormaDelitoRepository.save(normaLegalDelitoList.get(i));
+                }
+
+                /*Actualiza el estado del detalle Actual*/
+                MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+                List<MovDelitosDet> movDelitosDets = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                for (MovDelitosDet delitos : movDelitosDets) {
+                    delitos.setEstadoDelitoDetalle(0);
+                    delitos.setEstado(Constant.ESTADO_INACTIVO);
+                    delitos.setVigente(Constant.ESTADO_INACTIVO);
+                    delitos.setFecha(LocalDate.now());
+                    delitos.setEstadoDelitosDet(estadoDelitoArchivado);
+                    delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+                    movDelitosDetRepository.save(delitos);
+                }
+
+                /*Inserta el nuevo Detalle del Delito*/
+                List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
+
+                Long MaxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleParrafo = maeTipoDelitoDetalleRepository.findById(Constant.PARRAFO).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleNumeral = maeTipoDelitoDetalleRepository.findById(Constant.NUMERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleLiteral = maeTipoDelitoDetalleRepository.findById(Constant.LITERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeEstadoDelitosDet maeEstadoDelitosDetRegistrado = maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO).orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado"));
+                List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
+                List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
+                List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
+                for (int i = 0; i < movDelitoDTODet.size(); i++) {
+                    if (movDelitoDTODet.get(i).getNivel() == 1) {
+                        MovDelitosDet movDelitosDetParrafo = new MovDelitosDet();
+                        movDelitosDetParrafo.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetParrafo.setDelito(movDelito);
+                        movDelitosDetParrafo.setTipoDelitoDetalle(maeTipoDelitoDetalleParrafo);
+                        movDelitosDetParrafo.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + "." + movDelitoDTODet.get(i).getNumeracion() + ".0.0");
+                        movDelitosDetParrafo.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetParrafo.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetParrafo.setFechaIniVigencia(LocalDate.now().format(formatter));
+                        movDelitosDetParrafo.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetParrafo.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetParrafo.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setVersion(1);
+                        movDelitosDetParrafo.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetParrafo.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetParrafo.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetParrafo.setFecha(LocalDate.now());
+                        movDelitosDetParrafo.setFlag("I");
+                        movDelitosDetParrafo.setUid("tud");
+                        movDelitosDetParrafo.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetParrafo.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetParrafo.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetParrafo);
+                        listDelitosParrafo.add(movDelitosDetParrafo);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 2) {
+                        MovDelitosDet movDelitosDetNumeral = new MovDelitosDet();
+                        movDelitosDetNumeral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetNumeral.setDelito(movDelito);
+                        movDelitosDetNumeral.setTipoDelitoDetalle(maeTipoDelitoDetalleNumeral);
+                        movDelitosDetNumeral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetNumeral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetNumeral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetNumeral.setFechaIniVigencia(LocalDate.now().format(formatter));
+                        movDelitosDetNumeral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetNumeral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetNumeral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setVersion(1);
+                        movDelitosDetNumeral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetNumeral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetNumeral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetNumeral.setFecha(LocalDate.now());
+                        movDelitosDetNumeral.setFlag("I");
+                        movDelitosDetNumeral.setUid("tud");
+                        movDelitosDetNumeral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetNumeral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetNumeral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetNumeral);
+                        listDelitosNumeral.add(movDelitosDetNumeral);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 3) {
+                        MovDelitosDet movDelitosDetLiteral = new MovDelitosDet();
+                        movDelitosDetLiteral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetLiteral.setDelito(movDelito);
+                        movDelitosDetLiteral.setTipoDelitoDetalle(maeTipoDelitoDetalleLiteral);
+                        movDelitosDetLiteral.setCodigo(normaLegalRequest.getDelito().getCabArticulo().getArticulo() + ".");
+                        movDelitosDetLiteral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetLiteral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetLiteral.setFechaIniVigencia(LocalDate.now().format(formatter));
+                        movDelitosDetLiteral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetLiteral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetLiteral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setVersion(1);
+                        movDelitosDetLiteral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetLiteral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetLiteral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetLiteral.setFecha(LocalDate.now());
+                        movDelitosDetLiteral.setFlag("I");
+                        movDelitosDetLiteral.setUid("tud");
+                        movDelitosDetLiteral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetLiteral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetLiteral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetLiteral);
+                        listDelitosLiteral.add(movDelitosDetLiteral);
+                        MaxIdDelitoDet++;
+                    }
+                }
+
+                if (!listDelitosParrafo.isEmpty() && !listDelitosNumeral.isEmpty()) {
+                    for (int i = 0; i < listDelitosParrafo.size(); i++) {
+                        for (int j = 0; j < listDelitosNumeral.size(); j++) {
+                            if (Objects.equals(listDelitosNumeral.get(j).getDelitosAncestro(),
+                                    listDelitosParrafo.get(i).getCodigoTud())) {
+                                listDelitosNumeral.get(j).setDelitosDetPadre(listDelitosParrafo.get(i).getMovDelitosDetId());
+                                listDelitosNumeral.get(j).setCodigo(listDelitosNumeral.get(j).getCodigo() +
+                                        listDelitosParrafo.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosNumeral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosNumeral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                if (!listDelitosNumeral.isEmpty() && !listDelitosLiteral.isEmpty()) {
+                    for (int i = 0; i < listDelitosNumeral.size(); i++) {
+                        for (int j = 0; j < listDelitosLiteral.size(); j++) {
+                            if (Objects.equals(listDelitosLiteral.get(j).getDelitosAncestro(),
+                                    listDelitosNumeral.get(i).getCodigoTud())) {
+                                listDelitosLiteral.get(j).setDelitosDetPadre(listDelitosNumeral.get(i).getMovDelitosDetId());
+                                listDelitosLiteral.get(j).setCodigo(listDelitosLiteral.get(j).getCodigo() +
+                                        listDelitosNumeral.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosLiteral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosLiteral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                /*Inserta Relacion de Delito Nuevo*/
+                MovNormaLegalDelito normaLegalDelitoNuevo = new MovNormaLegalDelito();
+                normaLegalDelitoNuevo.setNormaLegalDelitosId(idnormaLegalDelito);
+                normaLegalDelitoNuevo.setMovDelito(movDelito);
+                normaLegalDelitoNuevo.setNormaLegal(normaLegal);
+                normaLegalDelitoNuevo.setTipoMovimiento(tipoMovimiento);
+                normaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
+                normaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
+                normaLegalDelitoNuevo.setFecha(LocalDate.now());
+                normaLegalDelitoNuevo.setFlag("I");
+                relacionNormaDelitoRepository.save(normaLegalDelitoNuevo);
+            }
+            else {
+                MaeEstadoDelitosDet estadoDelitoArchivado = maeEstadoDelitoDetRepository.findById(Constant.ARCHIVADO).orElseThrow(() -> new RuntimeException(Constant.TEXTO_ESTADO_NO_ENCONTRADO));
+
+                /*Actualiza el estado del detalle Actual*/
+                List<MovDelitosDet> movDelitosDetsActual = movDelitosDetRepository.ListaDelitosDet(normaLegalRequest.getDelitoId());
+                for (MovDelitosDet delitos : movDelitosDetsActual) {
+                    delitos.setEstadoDelitoDetalle(0);
+                    delitos.setEstado(Constant.ESTADO_INACTIVO);
+                    delitos.setVigente(Constant.ESTADO_INACTIVO);
+                    delitos.setFecha(LocalDate.now());
+                    delitos.setEstadoDelitosDet(estadoDelitoArchivado);
+                    delitos.setFechaFinVigencia(LocalDate.now().format(formatter));
+                    movDelitosDetRepository.save(delitos);
+                }
+
+                /*Inserta Relacion de Delito Actual*/
+                MovNormaLegalDelito normaLegalDelitoActual = new MovNormaLegalDelito();
+                normaLegalDelitoActual.setNormaLegalDelitosId(idnormaLegalDelito);
+                normaLegalDelitoActual.setMovDelito(movDelito);
+                normaLegalDelitoActual.setNormaLegal(normaLegal);
+                normaLegalDelitoActual.setTipoMovimiento(tipoMovimiento);
+                normaLegalDelitoActual.setFechaRegistro(LocalDate.now());
+                normaLegalDelitoActual.setEstado(Constant.ESTADO_ACTIVO);
+                normaLegalDelitoActual.setFecha(LocalDate.now());
+                normaLegalDelitoActual.setFlag("I");
+                relacionNormaDelitoRepository.save(normaLegalDelitoActual);
+                idnormaLegalDelito++;
+
+                /*Inserta Detalle de Delito Nuevo*/
+                List<DetalleArticuloDTO> movDelitoDTODet = normaLegalRequest.getDelito().getDetArticulo();
+
+                Long MaxIdDelitoDet = movDelitosDetRepository.MaxDelitosDet();
+
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleParrafo = maeTipoDelitoDetalleRepository.findById(Constant.PARRAFO).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleNumeral = maeTipoDelitoDetalleRepository.findById(Constant.NUMERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeTipoDelitoDetalle maeTipoDelitoDetalleLiteral = maeTipoDelitoDetalleRepository.findById(Constant.LITERAL).orElseThrow(() -> new RuntimeException("Tipo de Delito no encontrado"));
+                MaeEstadoDelitosDet maeEstadoDelitosDetRegistrado = maeEstadoDelitoDetRepository.findById(Constant.REGISTRAR_NUEVO).orElseThrow(() -> new RuntimeException("Tipo de Estado no encontrado"));
+                List<MovDelitosDet> listDelitosParrafo = new ArrayList<>();
+                List<MovDelitosDet> listDelitosNumeral = new ArrayList<>();
+                List<MovDelitosDet> listDelitosLiteral = new ArrayList<>();
+                for (int i = 0; i < movDelitoDTODet.size(); i++) {
+                    if (movDelitoDTODet.get(i).getNivel() == 1) {
+                        MovDelitosDet movDelitosDetParrafo = new MovDelitosDet();
+                        movDelitosDetParrafo.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetParrafo.setDelito(movDelito);
+                        movDelitosDetParrafo.setTipoDelitoDetalle(maeTipoDelitoDetalleParrafo);
+                        movDelitosDetParrafo.setCodigo(movDelito.getCodigo().trim() + "." + movDelitoDTODet.get(i).getNumeracion() + ".0.0");
+                        movDelitosDetParrafo.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetParrafo.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetParrafo.setFechaIniVigencia(LocalDate.now().format(formatter));
+                        movDelitosDetParrafo.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetParrafo.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetParrafo.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setVersion(1);
+                        movDelitosDetParrafo.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetParrafo.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetParrafo.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetParrafo.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetParrafo.setFecha(LocalDate.now());
+                        movDelitosDetParrafo.setFlag("I");
+                        movDelitosDetParrafo.setUid("tud");
+                        movDelitosDetParrafo.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetParrafo.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetParrafo.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetParrafo);
+                        listDelitosParrafo.add(movDelitosDetParrafo);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 2) {
+                        MovDelitosDet movDelitosDetNumeral = new MovDelitosDet();
+                        movDelitosDetNumeral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetNumeral.setDelito(movDelito);
+                        movDelitosDetNumeral.setTipoDelitoDetalle(maeTipoDelitoDetalleNumeral);
+                        movDelitosDetNumeral.setCodigo(movDelito.getCodigo().trim() + ".");
+                        movDelitosDetNumeral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetNumeral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetNumeral.setFechaIniVigencia(LocalDate.now().format(formatter));
+                        movDelitosDetNumeral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetNumeral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetNumeral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setVersion(1);
+                        movDelitosDetNumeral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetNumeral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetNumeral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetNumeral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetNumeral.setFecha(LocalDate.now());
+                        movDelitosDetNumeral.setFlag("I");
+                        movDelitosDetNumeral.setUid("tud");
+                        movDelitosDetNumeral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetNumeral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetNumeral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetNumeral);
+                        listDelitosNumeral.add(movDelitosDetNumeral);
+                        MaxIdDelitoDet++;
+                    }
+                    if (movDelitoDTODet.get(i).getNivel() == 3) {
+                        MovDelitosDet movDelitosDetLiteral = new MovDelitosDet();
+                        movDelitosDetLiteral.setMovDelitosDetId(MaxIdDelitoDet);
+                        movDelitosDetLiteral.setDelito(movDelito);
+                        movDelitosDetLiteral.setTipoDelitoDetalle(maeTipoDelitoDetalleLiteral);
+                        movDelitosDetLiteral.setCodigo(movDelito.getCodigo().trim() + ".");
+                        movDelitosDetLiteral.setPenaMin(movDelitoDTODet.get(i).getPenaMin());
+                        movDelitosDetLiteral.setPenaMax(movDelitoDTODet.get(i).getPenaMax());
+                        movDelitosDetLiteral.setFechaIniVigencia(LocalDate.now().format(formatter));
+                        movDelitosDetLiteral.setFechaFinVigencia(Constant.ACTIVO);
+                        movDelitosDetLiteral.setModificado(movDelitoDTODet.get(i).getFlagModificado());
+                        movDelitosDetLiteral.setEstado(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setVersion(1);
+                        movDelitosDetLiteral.setVigente(Constant.ESTADO_ACTIVO);
+                        movDelitosDetLiteral.setCodigoDelito(movDelitoDTODet.get(i).getNumeracion());
+                        movDelitosDetLiteral.setDescripcionDelito(movDelitoDTODet.get(i).getNombre());
+                        movDelitosDetLiteral.setEstadoDelitosDet(maeEstadoDelitosDetRegistrado);
+                        movDelitosDetLiteral.setFecha(LocalDate.now());
+                        movDelitosDetLiteral.setFlag("I");
+                        movDelitosDetLiteral.setUid("tud");
+                        movDelitosDetLiteral.setCodigoTud(movDelitoDTODet.get(i).getId());
+                        movDelitosDetLiteral.setDelitosAncestro(movDelitoDTODet.get(i).getIdRef());
+                        movDelitosDetLiteral.setEstadoDelitoDetalle(1);
+                        movDelitosDetRepository.save(movDelitosDetLiteral);
+                        listDelitosLiteral.add(movDelitosDetLiteral);
+                        MaxIdDelitoDet++;
+                    }
+                }
+
+                if (!listDelitosParrafo.isEmpty() && !listDelitosNumeral.isEmpty()) {
+                    for (int i = 0; i < listDelitosParrafo.size(); i++) {
+                        for (int j = 0; j < listDelitosNumeral.size(); j++) {
+                            if (Objects.equals(listDelitosNumeral.get(j).getDelitosAncestro(),
+                                    listDelitosParrafo.get(i).getCodigoTud())) {
+                                listDelitosNumeral.get(j).setDelitosDetPadre(listDelitosParrafo.get(i).getMovDelitosDetId());
+                                listDelitosNumeral.get(j).setCodigo(listDelitosNumeral.get(j).getCodigo() +
+                                        listDelitosParrafo.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosNumeral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosNumeral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                if (!listDelitosNumeral.isEmpty() && !listDelitosLiteral.isEmpty()) {
+                    for (int i = 0; i < listDelitosNumeral.size(); i++) {
+                        for (int j = 0; j < listDelitosLiteral.size(); j++) {
+                            if (Objects.equals(listDelitosLiteral.get(j).getDelitosAncestro(),
+                                    listDelitosNumeral.get(i).getCodigoTud())) {
+                                listDelitosLiteral.get(j).setDelitosDetPadre(listDelitosNumeral.get(i).getMovDelitosDetId());
+                                listDelitosLiteral.get(j).setCodigo(listDelitosLiteral.get(j).getCodigo() +
+                                        listDelitosNumeral.get(i).getCodigoDelito().trim() + "." +
+                                        listDelitosLiteral.get(j).getCodigoDelito().trim() + "0");
+                                movDelitosDetRepository.save(listDelitosLiteral.get(j));
+                            }
+                        }
+                    }
+                }
+
+                /*Inserta Relacion de Delito Nuevo*/
+                MovNormaLegalDelito normaLegalDelitoNuevo = new MovNormaLegalDelito();
+                normaLegalDelitoNuevo.setNormaLegalDelitosId(idnormaLegalDelito);
+                normaLegalDelitoNuevo.setMovDelito(movDelito);
+                normaLegalDelitoNuevo.setNormaLegal(normaLegal);
+                normaLegalDelitoNuevo.setTipoMovimiento(tipoMovimientoNuevo);
+                normaLegalDelitoNuevo.setFechaRegistro(LocalDate.now());
+                normaLegalDelitoNuevo.setEstado(Constant.ESTADO_ACTIVO);
+                normaLegalDelitoNuevo.setFecha(LocalDate.now());
+                normaLegalDelitoNuevo.setFlag("I");
+                relacionNormaDelitoRepository.save(normaLegalDelitoNuevo);
+            }
+            resultadoDTO.setResultado("Los Datos se guardaron correctamente");
+        }
+        return resultadoDTO;
+	}
